@@ -63,7 +63,7 @@ type Notice = {
 };
 
 const offices = [
-  "朝霞事業所",
+  "西新宿事業所",
   "志木事業所",
   "新座事業所",
   "和光事業所",
@@ -75,7 +75,7 @@ const staffSeed: Staff[] = [
   {
     id: "aoki",
     name: "青木 章人",
-    office: "朝霞事業所",
+    office: "西新宿事業所",
     status: "移動中",
     color: "#0b8a9a",
     next: "10:30 A様宅",
@@ -84,7 +84,7 @@ const staffSeed: Staff[] = [
   {
     id: "takahashi",
     name: "高橋 真理子",
-    office: "朝霞事業所",
+    office: "西新宿事業所",
     status: "訪問中",
     color: "#405dd3",
     next: "11:45 C様宅",
@@ -93,7 +93,7 @@ const staffSeed: Staff[] = [
   {
     id: "kobayashi",
     name: "小林 英二",
-    office: "朝霞事業所",
+    office: "西新宿事業所",
     status: "勤務中",
     color: "#a15ac7",
     next: "13:00 B様宅",
@@ -102,7 +102,7 @@ const staffSeed: Staff[] = [
   {
     id: "iida",
     name: "飯田 志央",
-    office: "朝霞事業所",
+    office: "西新宿事業所",
     status: "移動中",
     color: "#e07343",
     next: "10:45 D様宅",
@@ -111,7 +111,7 @@ const staffSeed: Staff[] = [
   {
     id: "hayashi",
     name: "林 健太",
-    office: "朝霞事業所",
+    office: "西新宿事業所",
     status: "休憩中",
     color: "#638a4d",
     next: "13:30 E様宅",
@@ -151,7 +151,7 @@ const visitsSeed: Visit[] = [
     time: "10:30",
     end: "11:15",
     client: "A様",
-    address: "朝霞市サンプル町 1-2-3",
+    address: "東京都新宿区西新宿 1-2-3",
     content: "定期訪問・服薬確認",
     memo: "玄関チャイムを押してお待ちください",
     staffId: "aoki",
@@ -163,7 +163,7 @@ const visitsSeed: Visit[] = [
     time: "11:45",
     end: "12:30",
     client: "C様",
-    address: "朝霞市サンプル町 2-4-1",
+    address: "東京都新宿区西新宿 2-4-1",
     content: "生活状況の確認",
     memo: "ご家族同席予定",
     staffId: "takahashi",
@@ -175,7 +175,7 @@ const visitsSeed: Visit[] = [
     time: "13:00",
     end: "13:45",
     client: "B様",
-    address: "朝霞市サンプル町 3-1-8",
+    address: "東京都新宿区西新宿 3-1-8",
     content: "定期訪問・記録",
     memo: "駐車場は建物裏側",
     staffId: "kobayashi",
@@ -187,7 +187,7 @@ const visitsSeed: Visit[] = [
     time: "10:45",
     end: "11:30",
     client: "D様",
-    address: "朝霞市サンプル町 1-7-4",
+    address: "東京都新宿区西新宿 1-7-4",
     content: "支援内容の相談",
     memo: "",
     staffId: "iida",
@@ -199,7 +199,7 @@ const visitsSeed: Visit[] = [
     time: "13:30",
     end: "14:15",
     client: "E様",
-    address: "朝霞市サンプル町 4-2-6",
+    address: "東京都新宿区西新宿 4-2-6",
     content: "定期訪問",
     memo: "",
     staffId: "hayashi",
@@ -242,7 +242,7 @@ function App() {
   const [screen, setScreen] = useState("");
   const [visits, setVisits] = useState(visitsSeed);
   const [notices, setNotices] = useState(noticeSeed);
-  const [office, setOffice] = useState("朝霞事業所");
+  const [office, setOffice] = useState("西新宿事業所");
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
   const [sheet, setSheet] = useState<"assign" | "actions" | null>(null);
@@ -544,7 +544,7 @@ function Home({
         青木さん
       </h1>
       <div className="office-line">
-        <Building2 size={15} /> 朝霞事業所 <span>勤務中</span>
+        <Building2 size={15} /> 西新宿事業所 <span>勤務中</span>
       </div>
       <button className="next-card" onClick={onSchedule}>
         <div className="next-label">
@@ -908,7 +908,7 @@ function VisitForm({
         <label>
           住所
           <input
-            placeholder="例：朝霞市サンプル町 1-2-3"
+            placeholder="例：東京都新宿区西新宿 1-2-3"
             value={f.address}
             onChange={(e) => set("address", e.target.value)}
           />
@@ -1076,7 +1076,7 @@ function RouteView({
         <div className="grab" />
         <div className="route-head">
           <div>
-            <p>朝霞事業所からのおすすめ順</p>
+            <p>西新宿事業所からのおすすめ順</p>
             <h2>今日の最適ルート</h2>
           </div>
           <span className="demo">DEMO</span>
@@ -1111,7 +1111,7 @@ function RouteView({
             <ol className="route-list">
               <li>
                 <i>出発</i>
-                <b>朝霞事業所</b>
+                <b>西新宿事業所</b>
                 <small>3.2km / 12分</small>
               </li>
               <li>
@@ -1152,7 +1152,7 @@ function TeamMap({ staff, onBack }: { staff: Staff[]; onBack: () => void }) {
       <div className="team-sheet">
         <div className="grab" />
         <div className="team-title">
-          <h2>朝霞事業所の職員</h2>
+          <h2>西新宿事業所の職員</h2>
           <span>
             <i />
             更新中
@@ -1212,7 +1212,7 @@ function DistanceView() {
       <h2>移動区間</h2>
       <div className="leg-list">
         {[
-          ["朝霞事業所", "A様", "3.2km", "12分"],
+          ["西新宿事業所", "A様", "3.2km", "12分"],
           ["A様", "C様", "2.7km", "9分"],
           ["C様", "B様", "1.9km", "7分"],
         ].map((x) => (
@@ -1399,7 +1399,7 @@ function SettingsView({
         <span className="avatar big">青</span>
         <div>
           <b>青木 章人</b>
-          <p>朝霞事業所</p>
+          <p>西新宿事業所</p>
         </div>
       </div>
       <p className="menu-label">アプリ設定</p>
