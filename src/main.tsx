@@ -36,7 +36,6 @@ type Staff = {
   id: string;
   name: string;
   office: string;
-  status: "勤務中" | "訪問中" | "移動中" | "休憩中";
   color: string;
   next: string;
   updated: string;
@@ -50,7 +49,6 @@ type Visit = {
   content: string;
   memo: string;
   staffId: string;
-  status: "予定" | "移動中" | "訪問中" | "完了";
   distance: string;
 };
 type Notice = {
@@ -64,82 +62,74 @@ type Notice = {
 
 const offices = [
   "西新宿事業所",
-  "志木事業所",
-  "新座事業所",
-  "和光事業所",
-  "練馬事業所",
-  "板橋事業所",
-  "戸田事業所",
+  "池袋事業所",
+  "渋谷事業所",
+  "上野事業所",
+  "品川事業所",
+  "東京事業所",
+  "中野事業所",
 ];
 const staffSeed: Staff[] = [
   {
     id: "aoki",
-    name: "青木 章人",
+    name: "職員A",
     office: "西新宿事業所",
-    status: "移動中",
     color: "#0b8a9a",
     next: "10:30 A様宅",
     updated: "2分前",
   },
   {
     id: "takahashi",
-    name: "高橋 真理子",
+    name: "職員B",
     office: "西新宿事業所",
-    status: "訪問中",
     color: "#405dd3",
     next: "11:45 C様宅",
     updated: "1分前",
   },
   {
     id: "kobayashi",
-    name: "小林 英二",
+    name: "職員C",
     office: "西新宿事業所",
-    status: "勤務中",
     color: "#a15ac7",
     next: "13:00 B様宅",
     updated: "5分前",
   },
   {
     id: "iida",
-    name: "飯田 志央",
+    name: "職員D",
     office: "西新宿事業所",
-    status: "移動中",
     color: "#e07343",
     next: "10:45 D様宅",
     updated: "3分前",
   },
   {
     id: "hayashi",
-    name: "林 健太",
+    name: "職員E",
     office: "西新宿事業所",
-    status: "休憩中",
     color: "#638a4d",
     next: "13:30 E様宅",
     updated: "12分前",
   },
   {
     id: "nakamura",
-    name: "中村 さくら",
-    office: "志木事業所",
-    status: "訪問中",
+    name: "職員F",
+    office: "池袋事業所",
     color: "#c44e71",
     next: "12:00 A様宅",
     updated: "1分前",
   },
   {
     id: "saito",
-    name: "斎藤 愛子",
-    office: "新座事業所",
-    status: "勤務中",
+    name: "職員G",
+    office: "渋谷事業所",
     color: "#886bd5",
     next: "14:00 B様宅",
     updated: "4分前",
   },
   {
     id: "watanabe",
-    name: "渡部 隆之",
-    office: "和光事業所",
-    status: "移動中",
+    name: "職員H",
+    office: "上野事業所",
     color: "#317d9e",
     next: "11:15 C様宅",
     updated: "2分前",
@@ -155,7 +145,6 @@ const visitsSeed: Visit[] = [
     content: "定期訪問・服薬確認",
     memo: "玄関チャイムを押してお待ちください",
     staffId: "aoki",
-    status: "移動中",
     distance: "3.2km",
   },
   {
@@ -167,7 +156,6 @@ const visitsSeed: Visit[] = [
     content: "生活状況の確認",
     memo: "ご家族同席予定",
     staffId: "takahashi",
-    status: "予定",
     distance: "2.7km",
   },
   {
@@ -179,7 +167,6 @@ const visitsSeed: Visit[] = [
     content: "定期訪問・記録",
     memo: "駐車場は建物裏側",
     staffId: "kobayashi",
-    status: "予定",
     distance: "1.9km",
   },
   {
@@ -191,7 +178,6 @@ const visitsSeed: Visit[] = [
     content: "支援内容の相談",
     memo: "",
     staffId: "iida",
-    status: "予定",
     distance: "2.4km",
   },
   {
@@ -203,7 +189,6 @@ const visitsSeed: Visit[] = [
     content: "定期訪問",
     memo: "",
     staffId: "hayashi",
-    status: "予定",
     distance: "3.1km",
   },
 ];
@@ -383,10 +368,10 @@ function App() {
             />
           ) : tab === "home" ? (
             <Home
-              visits={visits}
               notices={notices}
               onSchedule={() => go("schedule")}
-              onRoute={() => setScreen("route")}
+              onAdd={() => { setEditing(null); setScreen("form"); }}
+              onRoute={() => go("map")}
               onTeam={() => setScreen("team")}
             />
           ) : tab === "schedule" ? (
@@ -489,11 +474,10 @@ function Login({ onLogin }: { onLogin: () => void }) {
             <MapPin size={29} />
           </div>
           <h1>訪問予定</h1>
-          <p>訪問業務を、もっと見通しよく。</p>
         </div>
         <div className="login-card">
           <label>
-            職員ID またはメールアドレス
+            メールアドレス
             <input
               defaultValue="aoki@example.demo"
               placeholder="例：staff@example.demo"
@@ -510,9 +494,6 @@ function Login({ onLogin }: { onLogin: () => void }) {
           <button className="primary large" onClick={onLogin}>
             ログイン
           </button>
-          <p className="hint">
-            <ShieldCheck size={15} /> 社内専用アプリです
-          </p>
         </div>
         <p className="prototype-note">
           これは操作イメージを確認するためのデモです
@@ -522,84 +503,38 @@ function Login({ onLogin }: { onLogin: () => void }) {
   );
 }
 function Home({
-  visits,
   notices,
   onSchedule,
+  onAdd,
   onRoute,
   onTeam,
 }: {
-  visits: Visit[];
   notices: Notice[];
   onSchedule: () => void;
+  onAdd: () => void;
   onRoute: () => void;
   onTeam: () => void;
 }) {
-  const next = visits.find((v) => v.staffId === "aoki")!;
   return (
     <div className="page home">
       <p className="eyebrow">{today}</p>
-      <h1>
-        おはようございます、
-        <br />
-        青木さん
-      </h1>
-      <div className="office-line">
-        <Building2 size={15} /> 西新宿事業所 <span>勤務中</span>
-      </div>
-      <button className="next-card" onClick={onSchedule}>
-        <div className="next-label">
-          <Navigation size={15} /> 次の訪問
-        </div>
-        <div className="next-main">
-          <time>{next.time}</time>
-          <div>
-            <strong>{next.client}</strong>
-            <p>{next.content}</p>
-          </div>
-          <ChevronRight />
-        </div>
-        <div className="next-foot">
-          <MapPin size={14} />
-          {next.address}
-          <span>あと 18分</span>
-        </div>
-      </button>
-      <div className="metric-grid">
-        <button onClick={onSchedule}>
+      <h1>訪問予定</h1>
+      <p className="home-copy">必要な情報を確認・登録できます。</p>
+      <div className="home-actions">
+        <button className="home-action featured" onClick={onSchedule}>
           <CalendarDays />
-          <strong>3件</strong>
-          <span>今日の予定</span>
+          <div><b>予定を確認</b><span>事業所・職員の予定を見る</span></div>
+          <ChevronRight />
         </button>
-        <button onClick={onRoute}>
-          <Route />
-          <strong>7.8km</strong>
-          <span>移動予定距離</span>
+        <button className="home-action" onClick={onAdd}>
+          <Plus />
+          <div><b>予定を追加</b><span>訪問予定を登録する</span></div>
+          <ChevronRight />
         </button>
-        <button onClick={onTeam}>
-          <Users />
-          <strong>共有中</strong>
-          <span>位置情報</span>
-        </button>
-      </div>
-      <div className="section-head">
-        <h2>今日の予定</h2>
-        <button onClick={onSchedule}>すべて見る</button>
-      </div>
-      <div className="mini-list">
-        {visits
-          .filter((v) => v.staffId === "aoki" || v.staffId === "takahashi")
-          .slice(0, 2)
-          .map((v) => (
-            <button key={v.id} onClick={onSchedule}>
-              <time>{v.time}</time>
-              <span className={"statusdot " + v.status} />
-              <div>
-                <strong>{v.client}</strong>
-                <p>{v.content}</p>
-              </div>
-              <ChevronRight size={18} />
-            </button>
-          ))}
+        <div className="home-split">
+          <button onClick={onRoute}><Map /><b>訪問先マップ</b><span>ルートと訪問先を確認</span></button>
+          <button onClick={onTeam}><Users /><b>職員位置</b><span>最終取得位置を確認</span></button>
+        </div>
       </div>
       {notices.some((n) => !n.read) && (
         <div className="notice-strip">
@@ -669,10 +604,6 @@ function Schedule({
           onChange={(e) => setQuery(e.target.value)}
         />
       </label>
-      <div className="nowline">
-        <span />
-        現在 10:12
-      </div>
       <div className="staff-list">
         {shown.map((s) => (
           <div className="staff-row" key={s.id}>
@@ -682,7 +613,6 @@ function Schedule({
             <div className="staff-schedule">
               <button className="staffname">
                 <strong>{s.name}</strong>
-                <span className={"work " + s.status}>{s.status}</span>
               </button>
               {visits
                 .filter((v) => v.staffId === s.id)
@@ -717,7 +647,7 @@ function VisitCard({
   let timer: any;
   return (
     <button
-      className={"visit-card " + visit.status}
+      className="visit-card"
       onClick={onClick}
       onPointerDown={() => (timer = setTimeout(onLong, 650))}
       onPointerUp={() => clearTimeout(timer)}
@@ -731,7 +661,6 @@ function VisitCard({
         <strong>{visit.client}</strong>
         <p>{visit.content}</p>
       </div>
-      <span className="visit-state">{visit.status}</span>
     </button>
   );
 }
@@ -753,8 +682,7 @@ function Detail({
   const owner = staff.find((s) => s.id === visit.staffId)!;
   return (
     <div className="page detail">
-      <div className={"hero-status " + visit.status}>
-        <span>{visit.status}</span>
+      <div className="hero-status">
         <h1>{visit.client}への訪問</h1>
         <p>
           <Clock3 size={16} />
@@ -855,7 +783,6 @@ function VisitForm({
       content: "定期訪問",
       memo: "",
       staffId: "aoki",
-      status: "予定",
       distance: "2.0km",
     },
   );
@@ -915,15 +842,11 @@ function VisitForm({
         </label>
         <label>
           内容
-          <select
+          <textarea
             value={f.content}
             onChange={(e) => set("content", e.target.value)}
-          >
-            <option>定期訪問</option>
-            <option>生活状況の確認</option>
-            <option>支援内容の相談</option>
-            <option>その他</option>
-          </select>
+            placeholder="例：定期訪問・書類のお渡し"
+          />
         </label>
         <label>
           担当職員
@@ -956,101 +879,51 @@ function VisitForm({
     </form>
   );
 }
-function MapCanvas({ mode = "route" }: { mode?: "route" | "team" }) {
+const pinLabels = ["①", "②", "③", "④", "⑤"];
+
+function MapCanvas({
+  mode = "route",
+  visits = visitsSeed,
+  staff = staffSeed,
+  selectedId,
+  onSelectVisit,
+  onSelectStaff,
+}: {
+  mode?: "route" | "team";
+  visits?: Visit[];
+  staff?: Staff[];
+  selectedId?: string;
+  onSelectVisit?: (visit: Visit) => void;
+  onSelectStaff?: (staff: Staff) => void;
+}) {
   return (
-    <div className="map-canvas">
-      <div className="road r1" />
-      <div className="road r2" />
-      <div className="road r3" />
-      <div className="park p1" />
-      <div className="park p2" />
-      {mode === "route" && (
-        <svg className="route-svg" viewBox="0 0 320 350">
-          <path
-            d="M55 289 C72 245, 108 263, 123 201 S184 177, 212 121 S259 82, 270 51"
-            fill="none"
-            stroke="#0b8a9a"
-            strokeWidth="6"
-            strokeLinecap="round"
-            strokeDasharray="2 8"
-          />
+    <div className="map-canvas" aria-label="地図の完成イメージ">
+      <div className="map-water" />
+      <div className="map-park park-one">都市公園</div>
+      <div className="map-park park-two">緑地</div>
+      {Array.from({ length: 12 }, (_, i) => <div className={`map-block block-${i + 1}`} key={i} />)}
+      <div className="map-road major-road one" /><div className="map-road major-road two" />
+      <div className="map-road minor-road three" /><div className="map-road minor-road four" /><div className="map-road minor-road five" />
+      <span className="map-label label-one">中央通り</span><span className="map-label label-two">都市環状線</span>
+      {mode === "route" ? <>
+        <svg className="route-svg" viewBox="0 0 390 560" aria-hidden="true">
+          <path d="M57 458 C92 408 104 381 151 355 S192 278 236 254 S280 168 328 102" fill="none" stroke="white" strokeWidth="12" strokeLinecap="round" />
+          <path d="M57 458 C92 408 104 381 151 355 S192 278 236 254 S280 168 328 102" fill="none" stroke="#0b8a9a" strokeWidth="6" strokeLinecap="round" />
         </svg>
-      )}
-      {mode === "route" ? (
-        <>
-          {[
-            ["現在地", "start"],
-            ["1", "pin pA"],
-            ["2", "pin pB"],
-            ["3", "pin pC"],
-          ].map(([x, c]) => (
-            <span key={c} className={c}>
-              {x}
-            </span>
-          ))}
-        </>
-      ) : (
-        staffSeed.slice(0, 5).map((s, i) => (
-          <button
-            className={"person person" + i}
-            key={s.id}
-            style={{ background: s.color }}
-          >
-            {s.name.slice(0, 1)}
-          </button>
-        ))
-      )}
+        <span className="location-dot"><Navigation size={15} fill="currentColor" /></span>
+        {visits.slice(0, 4).map((visit, index) => <button key={visit.id} className={`visit-pin map-pin-${index + 1} ${selectedId === visit.id ? "selected" : ""}`} onClick={() => onSelectVisit?.(visit)} aria-label={`${visit.client}を表示`}><span>{pinLabels[index]}</span></button>)}
+      </> : staff.slice(0, 5).map((member, index) => <button key={member.id} className={`staff-pin staff-pin-${index + 1} ${selectedId === member.id ? "selected" : ""}`} style={{ "--pin-color": member.color } as React.CSSProperties} onClick={() => onSelectStaff?.(member)}><span>{member.name.slice(0, 1)}</span><b>{member.name.split(" ")[0]}</b></button>)}
+      <div className="map-attribution">Map prototype</div>
     </div>
   );
 }
-function MapView({
-  visits,
-  onRoute,
-  onTeam,
-  onDistance,
-}: {
-  visits: Visit[];
-  onRoute: () => void;
-  onTeam: () => void;
-  onDistance: () => void;
-}) {
-  return (
-    <div className="map-page">
-      <div className="map-tabs">
-        <button className="active">訪問先</button>
-        <button onClick={onTeam}>職員の現在地</button>
-      </div>
-      <MapCanvas />
-      <div className="map-sheet">
-        <div className="grab" />
-        <h2>本日の訪問先</h2>
-        <p className="subline">
-          <Navigation size={15} />
-          最初の訪問まで 3.2km・約12分
-        </p>
-        {visits.slice(0, 3).map((v, i) => (
-          <button className="place" key={v.id} onClick={onRoute}>
-            <span>{i + 1}</span>
-            <div>
-              <b>
-                {v.time}　{v.client}
-              </b>
-              <p>{v.content}</p>
-            </div>
-            <ChevronRight />
-          </button>
-        ))}
-        <button className="primary routego" onClick={onRoute}>
-          <Route />
-          最適ルートを見る
-        </button>
-        <button className="text-action" onClick={onDistance}>
-          <Car />
-          移動距離を確認
-        </button>
-      </div>
-    </div>
-  );
+function MapView({ visits, onRoute, onTeam, onDistance }: { visits: Visit[]; onRoute: () => void; onTeam: () => void; onDistance: () => void }) {
+  const [view, setView] = useState<"map" | "list">("map");
+  const [selected, setSelected] = useState<Visit>(visits[0]);
+  return <div className="map-page">
+    <div className="map-controls"><div className="map-segment"><button className={view === "map" ? "active" : ""} onClick={() => setView("map")}>マップ</button><button className={view === "list" ? "active" : ""} onClick={() => setView("list")}>一覧</button></div><button className="team-switch" onClick={onTeam}><Users size={16}/>職員位置</button></div>
+    {view === "map" ? <><MapCanvas visits={visits} selectedId={selected.id} onSelectVisit={setSelected} /><div className="map-sheet visit-sheet"><div className="grab" /><div className="sheet-kicker"><span>{pinLabels[Math.max(0, visits.findIndex(v => v.id === selected.id))]}</span><b>訪問先</b><small>{visits.length}件</small></div><h2>{selected.client}</h2><p className="visit-time"><Clock3 size={15}/>{selected.time}〜{selected.end}</p><p className="visit-address"><MapPin size={15}/>{selected.address}</p><p className="visit-owner">担当：{staffSeed.find(s => s.id === selected.staffId)?.name}</p><button className="primary routego" onClick={onRoute}>詳細・ルートを見る<ChevronRight size={17}/></button></div></> : <div className="map-list-pane"><h2>本日の訪問予定</h2><p>時刻順に表示</p>{visits.map((visit, index) => <button className="map-list-row" key={visit.id} onClick={() => { setSelected(visit); setView("map"); }}><span>{pinLabels[index]}</span><time>{visit.time}<small>〜{visit.end}</small></time><div><b>{visit.client}</b><p>{visit.address}</p><small>担当：{staffSeed.find(s => s.id === visit.staffId)?.name}</small></div><ChevronRight /></button>)}<button className="secondary full" onClick={onDistance}><Car size={17}/>移動距離を確認</button></div>}
+  </div>;
 }
 function RouteView({
   ready,
@@ -1144,19 +1017,14 @@ function TeamMap({ staff, onBack }: { staff: Staff[]; onBack: () => void }) {
     <div className="team-page">
       <div className="team-notice">
         <ShieldCheck size={18} />
-        <span>
-          位置情報は勤務中のみ共有されます。アプリを終了すると更新されません。
-        </span>
+        <span>位置情報の最終取得時刻を表示します。アプリを終了した場合は位置情報が更新されません。</span>
       </div>
-      <MapCanvas mode="team" />
+      <MapCanvas mode="team" staff={staff} selectedId={picked.id} onSelectStaff={setPicked} />
       <div className="team-sheet">
         <div className="grab" />
         <div className="team-title">
           <h2>西新宿事業所の職員</h2>
-          <span>
-            <i />
-            更新中
-          </span>
+          <span>最終取得位置</span>
         </div>
         <div className="staff-chips">
           {staff.map((s) => (
@@ -1195,7 +1063,7 @@ function DistanceView() {
       <div className="date-row compact">
         <div>
           <b>{today}</b>
-          <span>青木 章人</span>
+          <span>職員A</span>
         </div>
         <button>
           <ChevronDown />
@@ -1398,7 +1266,7 @@ function SettingsView({
       <div className="profile">
         <span className="avatar big">青</span>
         <div>
-          <b>青木 章人</b>
+          <b>職員A</b>
           <p>西新宿事業所</p>
         </div>
       </div>
@@ -1415,7 +1283,7 @@ function SettingsView({
         <Navigation />
         <div>
           <b>位置情報の共有</b>
-          <p>勤務中のみ、同一事業所に共有</p>
+          <p>同一事業所に位置情報を共有</p>
         </div>
         <button
           className={position === "共有中" ? "on-toggle" : "off-toggle"}
@@ -1503,9 +1371,7 @@ function BottomSheet({
                   </span>
                   <div>
                     <b>{s.name}</b>
-                    <p>
-                      {s.status}・次の予定 {s.next}
-                    </p>
+                    <p>次の予定 {s.next}</p>
                   </div>
                   {confirmId === s.id && <CheckCircle2 />}
                 </button>
