@@ -14,6 +14,7 @@ import { Avatar, DateControl, Empty, Footer, Modal } from "./components";
 import {
   dateLabel,
   fieldsOf,
+  telephoneHref,
   minutes,
   recurrenceLabel,
   timelineLanes,
@@ -235,12 +236,12 @@ function TimelineCard({
   useEffect(() => () => clearTimeout(timer.current), []);
   return (
     <div
-      className={`timeline-card ${typeClass(visit.type)} ${visit.isOverride ? "overridden" : ""}`}
+      className={`timeline-card ${typeClass(visit.type)} ${visit.isOverride ? "overridden" : ""} ${visit.status === "cancelled" ? "cancelled-card" : ""}`}
       style={{ left, width, top }}
     >
       <button
         className="timeline-hit"
-        aria-label={`${visit.time}–${visit.end} ${visit.client} ${visit.type}${visit.recurrenceRule ? ` ${visit.isOverride ? "この日の変更" : "繰り返し"}` : ""}`}
+        aria-label={`${visit.time}–${visit.end} ${visit.client} ${visit.type}${visit.status === "cancelled" ? " キャンセル" : visit.recurrenceRule ? ` ${visit.isOverride ? "この日の変更" : "繰り返し"}` : ""}`}
         onContextMenu={(e) => e.preventDefault()}
         onPointerDown={(e) => {
           if (e.button !== 0) return;
@@ -248,7 +249,8 @@ function TimelineCard({
           origin.current = { x: e.clientX, y: e.clientY };
           timer.current = setTimeout(() => {
             held.current = true;
-            onChange();
+            if (visit.status === "cancelled") onOpen();
+            else onChange();
           }, 600);
         }}
         onPointerMove={(e) => {
@@ -273,17 +275,25 @@ function TimelineCard({
         </b>
         <strong>{visit.client}</strong>
         <span>{visit.type}</span>
-        {visit.recurrenceRule && (
-          <small>
-            <Repeat2 size={11} />
-            {visit.isOverride ? "この日の変更" : "繰り返し"}
-          </small>
+        {visit.status === "cancelled" ? (
+          <small className="cancel-label">キャンセル</small>
+        ) : (
+          visit.recurrenceRule && (
+            <small>
+              <Repeat2 size={11} />
+              {visit.isOverride ? "この日の変更" : "繰り返し"}
+            </small>
+          )
         )}
       </button>
       <button
         className="timeline-more"
-        aria-label={`${visit.client}の担当・時間を変更`}
-        onClick={onChange}
+        aria-label={
+          visit.status === "cancelled"
+            ? `${visit.client}のキャンセル詳細`
+            : `${visit.client}の担当・時間を変更`
+        }
+        onClick={visit.status === "cancelled" ? onOpen : onChange}
       >
         <Ellipsis size={16} />
       </button>
@@ -323,7 +333,7 @@ export function ScopeSelector({
       <p>
         {value === "one"
           ? "この日だけ変更します。次回以降は元の曜日・担当・時刻のままです。"
-          : "選択した日以降の予定に適用します。過去の予定は変わりません。以降の個別変更はリセットします。"}
+          : "選択した日以降の予定に適用します。以降の個別変更はリセットしますが、過去の予定とキャンセル済みの記録は残ります。"}
       </p>
     </fieldset>
   );
@@ -359,6 +369,8 @@ export function VisitForm({
           end: "10:30",
           client: "",
           address: "",
+          phone: "",
+          status: "active",
           type: "定期訪問",
           content: "",
           memo: "",
@@ -420,6 +432,16 @@ export function VisitForm({
             value={draft.address}
             placeholder="東京都新宿区・サンプル住所"
             onChange={(e) => put("address", e.target.value)}
+          />
+        </label>
+        <label>
+          電話番号
+          <input
+            type="tel"
+            autoComplete="tel"
+            value={draft.phone}
+            placeholder="000-0000-0000"
+            onChange={(e) => put("phone", e.target.value)}
           />
         </label>
         <label>
@@ -701,6 +723,7 @@ export function Detail({
   onChange,
   onMap,
   onDelete,
+  onCancelVisit,
 }: {
   visit: Occurrence;
   staff: Staff[];
@@ -709,12 +732,17 @@ export function Detail({
   onChange: () => void;
   onMap: () => void;
   onDelete: () => void;
+  onCancelVisit: () => void;
 }) {
   const owner = staff.find((s) => s.id === visit.staffId);
   const [deleting, setDeleting] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const cancelled = visit.status === "cancelled";
+  const phoneLink = telephoneHref(visit.phone);
   return (
     <div className="page detail">
       <div className="hero-status">
+        {cancelled && <p className="cancel-banner">キャンセル済み</p>}
         <span className={`type-badge ${typeClass(visit.type)}`}>
           {visit.type}
         </span>
@@ -735,6 +763,15 @@ export function Detail({
             {owner?.name}
             <p>{offices.find((o) => o.id === owner?.officeId)?.name}</p>
           </dd>
+          <dt>電話番号</dt>
+          <dd className="customer-phone">
+            {visit.phone || "未登録"}
+            {phoneLink && (
+              <a className="primary phone-call" href={phoneLink}>
+                電話をかける
+              </a>
+            )}
+          </dd>
           <dt>内容</dt>
           <dd>{visit.content || "内容なし"}</dd>
           <dt>メモ</dt>
@@ -746,12 +783,14 @@ export function Detail({
           </dd>
         </dl>
       </div>
-      <button className="map-button" onClick={onChange}>
-        <Users />
-        <div>
-          <b>担当・時間を変更</b>
-        </div>
-      </button>
+      {!cancelled && (
+        <button className="map-button" onClick={onChange}>
+          <Users />
+          <div>
+            <b>担当・時間を変更</b>
+          </div>
+        </button>
+      )}
       <button className="map-button" onClick={onMap}>
         <MapPin />
         <div>
@@ -759,15 +798,48 @@ export function Detail({
         </div>
       </button>
       <div className="detail-actions">
-        <button onClick={onEdit}>
-          <Pencil />
-          編集
-        </button>
+        {!cancelled && (
+          <button onClick={onEdit}>
+            <Pencil />
+            編集
+          </button>
+        )}
         <button className="danger" onClick={() => setDeleting(true)}>
           <Trash2 />
           削除
         </button>
       </div>
+      {!cancelled && (
+        <button
+          className="cancel-visit-button"
+          onClick={() => setCancelling(true)}
+        >
+          予定をキャンセル
+        </button>
+      )}
+      {cancelling && (
+        <Modal
+          title="この予定をキャンセルしますか？"
+          onClose={() => setCancelling(false)}
+        >
+          <p>
+            {visit.client} · {dateLabel(visit.date)} {visit.time}〜{visit.end}
+          </p>
+          <p>
+            予定表にキャンセル済みとして残ります。
+            {visit.recurrenceRule &&
+              "この予定のみキャンセルし、次回以降の予定は変更しません。"}
+          </p>
+          <div className="inline-actions">
+            <button className="secondary" onClick={() => setCancelling(false)}>
+              戻る
+            </button>
+            <button className="primary danger-solid" onClick={onCancelVisit}>
+              この予定のみキャンセル
+            </button>
+          </div>
+        </Modal>
+      )}
       {deleting && (
         <Modal
           title="この予定を削除しますか？"

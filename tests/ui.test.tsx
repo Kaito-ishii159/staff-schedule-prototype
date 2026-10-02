@@ -15,7 +15,7 @@ import { officeSeed, staffSeed, visitSeed } from "../src/data";
 // Seed dates must stay reproducible when CI runs in a later week or timezone.
 vi.hoisted(() => {
   vi.useFakeTimers();
-  vi.setSystemTime(new Date('2026-10-01T00:50:00Z'));
+  vi.setSystemTime(new Date("2026-10-01T00:50:00Z"));
 });
 
 beforeEach(() => {
@@ -46,6 +46,84 @@ const login = () => {
   click("ログイン");
 };
 describe("prototype interactions", () => {
+  it("saves and edits a customer telephone number and exposes a normalized tel link", () => {
+    login();
+    click("予定");
+    click("予定を追加");
+    change("訪問先", "電話テスト");
+    change("電話番号", "000-0000-0001");
+    click("保存する");
+    click("10:00–10:30 電話テスト 定期訪問");
+    expect(
+      screen.getByRole("link", { name: "電話をかける" }).getAttribute("href"),
+    ).toBe("tel:00000000001");
+    click("編集");
+    change("電話番号", "000-0000-0002");
+    click("保存する");
+    click("10:00–10:30 電話テスト 定期訪問");
+    expect(
+      screen.getByRole("link", { name: "電話をかける" }).getAttribute("href"),
+    ).toBe("tel:00000000002");
+    click("予定をキャンセル");
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "戻る" }),
+    );
+    expect(screen.queryByText("キャンセル済み")).toBeNull();
+    click("予定をキャンセル");
+    click("この予定のみキャンセル");
+    click("10:00–10:30 電話テスト 定期訪問 キャンセル");
+    expect(screen.getByText("キャンセル済み")).toBeTruthy();
+  });
+  it("cancels one recurring visit, keeps it in the timeline and excludes it from own route", () => {
+    login();
+    click("予定");
+    click("10:00–10:30 A様 定期訪問 繰り返し");
+    click("予定をキャンセル");
+    click("この予定のみキャンセル");
+    const card = screen.getByRole("button", {
+      name: "10:00–10:30 A様 定期訪問 キャンセル",
+    });
+    expect(card.closest(".cancelled-card")).toBeTruthy();
+    fireEvent.input(screen.getByLabelText("表示日"), {
+      target: { value: "2026-10-05" },
+    });
+    expect(
+      screen.getByRole("button", { name: "10:00–10:30 A様 定期訪問 繰り返し" }),
+    ).toBeTruthy();
+    click("訪問先");
+    expect(document.querySelectorAll(".destination-pin")).toHaveLength(3);
+    expect(screen.queryByRole("button", { name: "1 A様 10:00" })).toBeNull();
+    click("設定");
+    click("キャンセル一覧 月別・事業所別のキャンセル予定");
+    expect(screen.getByText("キャンセル 4件")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /A様.*定期訪問/ }));
+    expect(screen.getByText("キャンセル済み")).toBeTruthy();
+  });
+  it("filters management cancellations by month and office and keeps filters after detail navigation", () => {
+    login();
+    click("設定");
+    click("キャンセル一覧 月別・事業所別のキャンセル予定");
+    expect(screen.getByText("キャンセル 3件")).toBeTruthy();
+    change("事業所", "office-2");
+    expect(screen.getByText("キャンセル 2件")).toBeTruthy();
+    fireEvent.input(screen.getByLabelText("対象月"), {
+      target: { value: "2026-09" },
+    });
+    expect(screen.getByText("キャンセル 1件")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /サンプル9様/ }));
+    expect(screen.getByText("キャンセル済み")).toBeTruthy();
+    click("戻る");
+    expect((screen.getByLabelText("対象月") as HTMLInputElement).value).toBe(
+      "2026-09",
+    );
+    expect((screen.getByLabelText("事業所") as HTMLSelectElement).value).toBe(
+      "office-2",
+    );
+    change("事業所", "office-7");
+    expect(
+      screen.getByText("この月・事業所のキャンセル予定はありません。"),
+    ).toBeTruthy();
+  });
   it("opens long-press change at 600ms and cancels on scrolling", () => {
     vi.useFakeTimers();
     const onChange = vi.fn();

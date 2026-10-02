@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { Avatar, Empty, Menu, Modal } from "./components";
 import { Schedule, VisitForm, Detail, ChangeSheet } from "./Schedule";
+import { Cancellations } from "./Cancellations";
 import { StaffForm, StaffList, OfficeForm, OfficeList } from "./Admin";
 import { DistancePage, RoutePage, StaffMap, VisitMap } from "./Maps";
 import {
@@ -25,6 +26,7 @@ import {
   newId,
   occurrencesOn,
   removeOccurrence,
+  cancelOccurrence,
   today,
   type EditScope,
   type Occurrence,
@@ -56,7 +58,8 @@ type Screen =
         | "theme"
         | "route"
         | "distance"
-        | "add";
+        | "add"
+        | "cancellations";
     }
   | { kind: "detail" | "edit" | "destination"; visit: Occurrence };
 const titles: Record<Screen["kind"], string> = {
@@ -77,6 +80,7 @@ const titles: Record<Screen["kind"], string> = {
   edit: "予定を編集",
   detail: "予定詳細",
   destination: "訪問先の位置",
+  cancellations: "キャンセル一覧",
 };
 const themes: { id: Theme; name: string; color: string }[] = [
   { id: "blue", name: "ブルー", color: "#276cb0" },
@@ -87,6 +91,10 @@ const themes: { id: Theme; name: string; color: string }[] = [
 ];
 export default function App() {
   const [loggedIn, setLoggedIn] = useState(false);
+  const [cancellationMonth, setCancellationMonth] = useState(today.slice(0, 7));
+  const [cancellationOfficeId, setCancellationOfficeId] = useState(
+    officeSeed[0].id,
+  );
   const [staff, setStaff] = useState(staffSeed);
   const [offices, setOffices] = useState(officeSeed);
   const [visits, setVisits] = useState(visitSeed);
@@ -128,7 +136,9 @@ export default function App() {
   const self = staff.find((s) => s.id === loginStaffId)!;
   const ownOffice = offices.find((o) => o.id === self.officeId)!;
   const items = occurrencesOn(visits, date);
-  const ownItems = items.filter((v) => v.staffId === loginStaffId);
+  const ownItems = items.filter(
+    (v) => v.staffId === loginStaffId && v.status !== "cancelled",
+  );
   const unread = notices.filter((n) => !n.read).length;
   const push = (s: Screen) => {
     setScreens((old) => [...old, s]);
@@ -301,6 +311,17 @@ export default function App() {
             go({ kind: "schedule" });
             flash("この予定を削除しました");
           }}
+          onCancelVisit={() => {
+            const cancelled = { ...screen.visit, status: "cancelled" as const };
+            setVisits((v) => cancelOccurrence(v, screen.visit));
+            setDate(screen.visit.date);
+            setOfficeId(
+              staff.find((s) => s.id === screen.visit.staffId)!.officeId,
+            );
+            setFocusVisit(cancelled);
+            go({ kind: "schedule" });
+            flash("この予定をキャンセルしました");
+          }}
         />
       );
       break;
@@ -370,6 +391,20 @@ export default function App() {
           staff={staff}
           offices={offices}
           onAdd={() => push({ kind: "staff-add" })}
+        />
+      );
+      break;
+    case "cancellations":
+      content = (
+        <Cancellations
+          visits={visits}
+          staff={staff}
+          offices={offices}
+          month={cancellationMonth}
+          officeId={cancellationOfficeId}
+          onMonth={setCancellationMonth}
+          onOffice={setCancellationOfficeId}
+          onOpen={open}
         />
       );
       break;
@@ -502,6 +537,12 @@ export default function App() {
             onClick={() => push({ kind: "theme" })}
           />
           <h3>管理</h3>
+          <Menu
+            icon={<CalendarDays />}
+            title="キャンセル一覧"
+            sub="月別・事業所別のキャンセル予定"
+            onClick={() => push({ kind: "cancellations" })}
+          />
           <Menu
             icon={<Users />}
             title="職員管理"

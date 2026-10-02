@@ -379,6 +379,9 @@ export function VisitMap({
           />
           {visit && (
             <article className="map-selection">
+              {visit.status === "cancelled" && (
+                <span className="cancel-label">キャンセル済み</span>
+              )}
               <div className="list-heading">
                 <b>
                   {number}. {visit.client}

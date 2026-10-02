@@ -52,6 +52,8 @@ export const visitSeed: Visit[] = staffSeed.flatMap((staff, i) => {
     end: ["10:30", "12:30", "14:15", "15:45"][j],
     client: `${String.fromCharCode(65 + ((i * 2 + j) % 26))}様`,
     address: `${officeSeed[Math.floor(i / 10)].address} ${j + 1}番（サンプル）`,
+    phone: "000-0000-0000",
+    status: "active",
     type: visitTypes[(i + j) % visitTypes.length],
     content: j === 0 ? "ご家族への説明と書類の確認" : "ご本人・ご家族との相談",
     memo: j === 0 ? "書類を持参してください。" : "",
@@ -64,6 +66,37 @@ export const visitSeed: Visit[] = staffSeed.flatMap((staff, i) => {
     exceptions: {},
   }));
 });
+// Standalone cancellation samples across offices and months; all contact numbers are placeholders.
+const currentMonth = today.slice(0, 7);
+const previousMonth = addDays(`${currentMonth}-01`, -1).slice(0, 7);
+for (const [index, [staffId, date]] of [
+  ["staff-2", today],
+  ["staff-3", `${currentMonth}-10`],
+  ["staff-4", `${currentMonth}-22`],
+  ["staff-11", `${currentMonth}-05`],
+  ["staff-12", `${currentMonth}-20`],
+  ["staff-21", `${currentMonth}-08`],
+  ["staff-22", `${currentMonth}-24`],
+  ["staff-2", `${previousMonth}-12`],
+  ["staff-11", `${previousMonth}-18`],
+].entries()) {
+  const member = staffSeed.find((s) => s.id === staffId)!;
+  visitSeed.push({
+    id: `cancel-demo-${index}`,
+    date,
+    time: "14:30",
+    end: "15:00",
+    client: `サンプル${index + 1}様`,
+    address: officeSeed.find((o) => o.id === member.officeId)!.address,
+    phone: "000-0000-0000",
+    status: "cancelled",
+    type: visitTypes[index % visitTypes.length],
+    content: "訪問予定",
+    memo: "キャンセル済みのサンプルです。",
+    staffId,
+    exceptions: {},
+  });
+}
 export const noticeSeed: Notice[] = [
   {
     id: "notice-1",

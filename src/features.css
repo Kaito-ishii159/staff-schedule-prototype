@@ -929,6 +929,126 @@ textarea {
   box-shadow: 0 5px 20px #142b4530;
 }
 /* Two workflows share one basemap, without mixing the overlays. */
+.cancelled-card {
+  background-image: repeating-linear-gradient(
+    135deg,
+    transparent 0 10px,
+    #59677838 10px 12px,
+    transparent 12px 20px
+  );
+}
+.cancelled-card .timeline-hit > b,
+.cancelled-card .timeline-hit > strong,
+.cancelled-card .timeline-hit > span {
+  color: #596576;
+}
+.cancelled-card .timeline-hit > strong {
+  text-decoration: line-through;
+}
+.cancel-label {
+  display: inline-flex;
+  width: max-content;
+  border: 1px solid #ad686c;
+  color: #893b44;
+  background: #fff1f1;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 2px 5px;
+  border-radius: 4px;
+}
+.cancelled-card .cancel-label {
+  padding: 1px 4px;
+  font-size: 9px;
+}
+.cancel-banner {
+  width: max-content;
+  color: #893b44;
+  background: #fff1f1;
+  padding: 7px 12px;
+  border: 1px solid #ad686c;
+  border-radius: 7px;
+  font-weight: 800;
+}
+.customer-phone {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 18px !important;
+}
+.phone-call {
+  text-decoration: none;
+  min-height: 48px;
+  width: 100%;
+}
+.cancel-visit-button {
+  width: 100%;
+  min-height: 48px;
+  border: 1px solid #c08587;
+  border-radius: 12px;
+  background: #fff6f6;
+  color: #923d46;
+  font-weight: 700;
+  font-size: 14px;
+  margin-top: 16px;
+}
+.cancellation-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 18px;
+  border: 1px solid #e0d8dc;
+  border-radius: 14px;
+  background: white;
+  margin-bottom: 16px;
+}
+.cancellation-summary > span {
+  font-size: 12px;
+  color: #5c7180;
+}
+.cancellation-summary strong {
+  font-size: 23px;
+  color: #893b44;
+}
+.cancellation-summary small {
+  font-size: 11px;
+  color: #647988;
+}
+.cancellation-item {
+  display: block;
+  text-align: left;
+  width: 100%;
+  padding: 15px;
+  border: 1px solid #dce5eb;
+  border-radius: 13px;
+  background: white;
+  margin-bottom: 12px;
+}
+.cancellation-item-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+}
+.cancellation-item time {
+  display: block;
+  font-size: 13px;
+  color: #5c7180;
+  margin: 8px 0;
+}
+.cancellation-item > strong {
+  display: block;
+  font-size: 17px;
+  margin-bottom: 8px;
+}
+.cancellation-item p {
+  font-size: 12px;
+  color: #536b7c;
+  margin: 8px 0 0;
+}
+.cancellation-item .text-action {
+  margin-top: 8px;
+}
 .preference-row {
   display: flex;
   align-items: center;

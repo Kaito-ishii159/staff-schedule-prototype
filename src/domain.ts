@@ -37,6 +37,8 @@ export interface VisitFields {
   client: string;
   address: string;
   type: VisitType;
+  phone: string;
+  status: "active" | "cancelled";
   content: string;
   memo: string;
   staffId: string;
@@ -44,7 +46,7 @@ export interface VisitFields {
 export interface Visit extends VisitFields {
   id: string;
   recurrenceRule?: RecurrenceRule;
-  exceptions: Record<string, { cancelled?: boolean; override?: VisitFields }>;
+  exceptions: Record<string, { deleted?: boolean; retainedCancellation?: boolean; override?: VisitFields }>;
 }
 export interface Occurrence extends VisitFields {
   seriesId: string;
@@ -95,6 +97,8 @@ export function fieldsOf(v: VisitFields): VisitFields {
     end: v.end,
     client: v.client,
     address: v.address,
+    phone: v.phone,
+    status: v.status,
     type: v.type,
     content: v.content,
     memo: v.memo,
@@ -126,7 +130,7 @@ export function occurrencesOn(visits: Visit[], date: string): Occurrence[] {
     if (occursOn(v, date) && !v.exceptions[date])
       result.push(make({ ...fieldsOf(v), date }, date, false));
     for (const [origin, exception] of Object.entries(v.exceptions)) {
-      if (!exception.cancelled && exception.override?.date === date)
+      if (!exception.deleted && exception.override?.date === date)
         result.push(make(exception.override, origin, true));
     }
   }
@@ -169,7 +173,9 @@ export function changeOccurrence(
     },
     exceptions: Object.fromEntries(
       Object.entries(series.exceptions).filter(
-        ([date]) => date < target.occurrenceDate,
+        ([date, exception]) =>
+          date < target.occurrenceDate ||
+          exception.override?.status === "cancelled",
       ),
     ),
   };
@@ -177,7 +183,16 @@ export function changeOccurrence(
     ...fieldsOf(draft),
     id,
     recurrenceRule: rule,
-    exceptions: {},
+    // Cancellation records remain visible under the original series, even after a future edit.
+    exceptions: Object.fromEntries(
+      Object.entries(series.exceptions)
+        .filter(
+          ([date, exception]) =>
+            date >= target.occurrenceDate &&
+            (exception.override?.status === "cancelled" || exception.retainedCancellation),
+        )
+        .map(([date]) => [date, { deleted: true, retainedCancellation: true }]),
+    ),
   };
   return [...visits.map((v) => (v.id === series.id ? previous : v)), future];
 }
@@ -191,7 +206,7 @@ export function removeOccurrence(visits: Visit[], target: Occurrence): Visit[] {
               ...v,
               exceptions: {
                 ...v.exceptions,
-                [target.occurrenceDate]: { cancelled: true },
+                [target.occurrenceDate]: { deleted: true },
               },
             },
           ]
@@ -205,6 +220,41 @@ export function recurrenceLabel(rule?: RecurrenceRule) {
         .map((d) => weekdayLabels[d])
         .join("・")}`
     : "繰り返しなし";
+}
+export function cancelOccurrence(visits: Visit[], target: Occurrence): Visit[] {
+  return changeOccurrence(
+    visits,
+    target,
+    { ...fieldsOf(target), status: "cancelled" },
+    target.recurrenceRule,
+    "one",
+    target.seriesId,
+  );
+}
+export function cancellationsInMonth(
+  visits: Visit[],
+  month: string,
+  staff: Staff[],
+  officeId: string,
+): Occurrence[] {
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return [];
+  const result: Occurrence[] = [];
+  for (let day = `${month}-01`; day.startsWith(month); day = addDays(day, 1)) {
+    result.push(
+      ...occurrencesOn(visits, day).filter(
+        (v) =>
+          v.status === "cancelled" &&
+          staff.some((s) => s.id === v.staffId && s.officeId === officeId),
+      ),
+    );
+  }
+  return result;
+}
+export function telephoneHref(phone: string): string | undefined {
+  const value = phone.trim();
+  if (!/^\+?[\d\s()-]+$/.test(value)) return undefined;
+  const digits = value.replace(/[^\d+]/g, "");
+  return /^\+?\d{6,15}$/.test(digits) ? `tel:${digits}` : undefined;
 }
 /** Next stored appointment, not an inference about the employee's current activity. */
 export function nextRegisteredVisit(
@@ -233,13 +283,18 @@ export function nextRegisteredVisit(
   }
   for (const candidate of [...candidates].filter((d) => d >= date).sort()) {
     const match = occurrencesOn(visits, candidate).find(
-      (v) => v.staffId === staffId && (candidate > date || v.time >= time),
+      (v) =>
+        v.status !== "cancelled" &&
+        v.staffId === staffId &&
+        (candidate > date || v.time >= time),
     );
     if (match) return match;
   }
 }
 export function validateVisit(draft: VisitFields, rule?: RecurrenceRule) {
   if (!draft.client.trim()) return "訪問先を入力してください。";
+  if (draft.phone?.trim() && !telephoneHref(draft.phone))
+    return "電話番号は数字・ハイフン・括弧で入力してください。";
   if (!draft.date || !draft.time || !draft.end || !draft.staffId)
     return "日付・時間・担当職員を入力してください。";
   if (minutes(draft.time) >= minutes(draft.end))

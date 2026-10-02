@@ -8,6 +8,9 @@ import {
   timelineLanes,
   validateVisit,
   nextRegisteredVisit,
+  cancelOccurrence,
+  cancellationsInMonth,
+  telephoneHref,
 } from "../src/domain.ts";
 test("next registered visit includes later dates, transferred exceptions and distant start dates", () => {
   const future = {
@@ -41,6 +44,8 @@ test("next registered visit includes later dates, transferred exceptions and dis
   );
 });
 const series = () => ({
+  phone: "000-0000-0000",
+  status: "active",
   id: "series",
   date: "2026-09-28",
   time: "10:00",
@@ -57,6 +62,102 @@ const series = () => ({
     startDate: "2026-09-28",
   },
   exceptions: {},
+});
+test("cancellation remains visible on Wednesday, preserves original fields and leaves Thursday active", () => {
+  const original = [series()];
+  const target = at(original, "2026-09-30");
+  const updated = cancelOccurrence(original, target);
+  assert.equal(occurrencesOn(updated, "2026-09-30").length, 1);
+  assert.deepEqual(fieldsOf(at(updated, "2026-09-30")), {
+    ...fieldsOf(target),
+    status: "cancelled",
+  });
+  assert.equal(at(updated, "2026-10-01").status, "active");
+  assert.equal(
+    nextRegisteredVisit(updated, "staff-1", "2026-09-30", "09:00").date,
+    "2026-10-01",
+  );
+  assert.equal(
+    occurrencesOn(
+      removeOccurrence(updated, at(updated, "2026-09-30")),
+      "2026-09-30",
+    ).length,
+    0,
+  );
+});
+test("standalone cancellation and monthly office filters retain original datetime", () => {
+  const original = [{ ...series(), recurrenceRule: undefined }];
+  const cancelled = cancelOccurrence(original, at(original, "2026-09-28"));
+  const staff = [{ id: "staff-1", officeId: "one" }];
+  assert.equal(
+    cancellationsInMonth(cancelled, "2026-09", staff, "one").length,
+    1,
+  );
+  assert.equal(
+    cancellationsInMonth(cancelled, "2026-10", staff, "one").length,
+    0,
+  );
+  assert.equal(
+    cancellationsInMonth(cancelled, "2026-09", staff, "two").length,
+    0,
+  );
+  assert.equal(
+    cancellationsInMonth(cancelled, "2026-13", staff, "one").length,
+    0,
+  );
+});
+test("moved exception cancellation uses displayed month and keeps its original recurrence key", () => {
+  const original = [series()];
+  const wed = at(original, "2026-09-30");
+  let updated = changeOccurrence(
+    original,
+    wed,
+    { ...fieldsOf(wed), date: "2026-10-02", phone: "000-0000-0001" },
+    wed.recurrenceRule,
+    "one",
+    "unused",
+  );
+  updated = cancelOccurrence(updated, at(updated, "2026-10-02"));
+  assert.equal(at(updated, "2026-10-02").occurrenceDate, "2026-09-30");
+  assert.equal(at(updated, "2026-10-02").phone, "000-0000-0001");
+  assert.equal(
+    cancellationsInMonth(
+      updated,
+      "2026-10",
+      [{ id: "staff-1", officeId: "one" }],
+      "one",
+    ).length,
+    1,
+  );
+  assert.equal(occurrencesOn(updated, "2026-09-30").length, 0);
+});
+test("future edits keep cancellation records without restoring a duplicate active occurrence", () => {
+  let updated = [series()];
+  updated = cancelOccurrence(updated, at(updated, "2026-10-01"));
+  const wed = at(updated, "2026-09-30");
+  updated = changeOccurrence(
+    updated,
+    wed,
+    { ...fieldsOf(wed), time: "12:00", end: "12:30" },
+    { ...wed.recurrenceRule, startDate: wed.date },
+    "future",
+    "new",
+  );
+  const thursday = occurrencesOn(updated, "2026-10-01");
+  assert.equal(thursday.length, 1);
+  assert.equal(thursday[0].status, "cancelled");
+  assert.equal(thursday[0].time, "10:00");
+  assert.equal(at(updated, "2026-10-05").time, "12:00");
+  const editedWednesday = at(updated, '2026-09-30');
+  updated = changeOccurrence(updated, editedWednesday, {...fieldsOf(editedWednesday), phone:'000-0000-0002'}, editedWednesday.recurrenceRule, 'future', 'newer');
+  assert.equal(occurrencesOn(updated, '2026-10-01').length, 1);
+  assert.equal(at(updated, '2026-10-01').status, 'cancelled');
+});
+test("phone links normalize separators and reject empty or non-phone URLs", () => {
+  assert.equal(telephoneHref("000-0000-0000"), "tel:00000000000");
+  assert.equal(telephoneHref(""), undefined);
+  assert.equal(telephoneHref("javascript:alert(1)"), undefined);
+  assert.equal(telephoneHref("000 (0000) 0001"), "tel:00000000001");
 });
 const at = (visits, date) => occurrencesOn(visits, date)[0];
 test("weekly expansion uses selected weekdays and inclusive end date", () => {
