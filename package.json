@@ -3,7 +3,32 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "scripts": { "dev": "vite", "build": "tsc --noEmit && vite build", "lint": "eslint src --max-warnings 0", "preview": "vite preview" },
-  "dependencies": { "@vitejs/plugin-react": "latest", "vite": "latest", "typescript": "latest", "react": "latest", "react-dom": "latest", "react-router-dom": "latest", "lucide-react": "latest" },
-  "devDependencies": { "@types/node": "latest", "@types/react": "latest", "@types/react-dom": "latest", "eslint": "latest", "typescript-eslint": "latest" }
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test tests/*.test.mjs && vitest run --environment jsdom tests/ui.test.tsx",
+    "lint": "eslint src --max-warnings 0",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "latest",
+    "lucide-react": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "react-router-dom": "latest",
+    "typescript": "latest",
+    "vite": "latest"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/react": "^16.3.3",
+    "@types/node": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "eslint": "latest",
+    "jsdom": "^30.1.1",
+    "typescript-eslint": "latest",
+    "vitest": "^5.0.3"
+  }
 }
