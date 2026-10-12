@@ -7,7 +7,43 @@ export const visitTypes = [
 ] as const;
 export type VisitType = (typeof visitTypes)[number];
 export type EditScope = "one" | "future";
-export type Theme = "blue" | "green" | "purple" | "orange" | "simple";
+export type Theme = "polar" | "animals" | "space" | "tropical" | "flowers";
+export const serviceKinds = ["看護", "リハビリ", "モニタリング"] as const;
+export type ServiceKind = (typeof serviceKinds)[number];
+export interface Client {
+  id: string;
+  name: string;
+  kana: string;
+  officeId: string;
+  active: boolean;
+  address: string;
+  phone: string;
+  ownerId: string;
+  nextDueMonth: string;
+}
+// Contact details are resolved by stable ID, including moved/cancelled exceptions.
+export function resolveClientVisits(
+  visits: Visit[],
+  clients: Client[],
+): Visit[] {
+  const index = new Map(clients.map((c) => [c.id, c]));
+  const resolve = <T extends VisitFields>(v: T): T => {
+    const c = index.get(v.clientId || "");
+    return c ? { ...v, client: c.name, address: c.address, phone: c.phone } : v;
+  };
+  return visits.map((v) => ({
+    ...resolve(v),
+    exceptions: Object.fromEntries(
+      Object.entries(v.exceptions).map(([date, ex]) => [
+        date,
+        {
+          ...ex,
+          override: ex.override ? resolve(ex.override) : undefined,
+        },
+      ]),
+    ),
+  }));
+}
 export interface Office {
   id: string;
   name: string;
@@ -31,6 +67,8 @@ export interface RecurrenceRule {
   endDate?: string;
 }
 export interface VisitFields {
+  clientId?: string;
+  serviceKind?: ServiceKind;
   date: string;
   time: string;
   end: string;
@@ -41,14 +79,25 @@ export interface VisitFields {
   status: "active" | "cancelled";
   content: string;
   memo: string;
+  memoScope?: "single" | "recurring";
+  memoDate?: string;
   staffId: string;
 }
 export interface Visit extends VisitFields {
   id: string;
+  memoCompletions?: Record<string, boolean>;
   recurrenceRule?: RecurrenceRule;
-  exceptions: Record<string, { deleted?: boolean; retainedCancellation?: boolean; override?: VisitFields }>;
+  exceptions: Record<
+    string,
+    {
+      deleted?: boolean;
+      retainedCancellation?: boolean;
+      override?: VisitFields;
+    }
+  >;
 }
 export interface Occurrence extends VisitFields {
+  memoCompleted?: boolean;
   seriesId: string;
   occurrenceDate: string;
   recurrenceRule?: RecurrenceRule;
@@ -92,6 +141,10 @@ export const typeClass = (type: VisitType) =>
   `type-${visitTypes.indexOf(type)}`;
 export function fieldsOf(v: VisitFields): VisitFields {
   return {
+    clientId: v.clientId,
+    serviceKind: v.serviceKind,
+    memoScope: v.memoScope,
+    memoDate: v.memoDate,
     date: v.date,
     time: v.time,
     end: v.end,
@@ -122,6 +175,12 @@ export function occurrencesOn(visits: Visit[], date: string): Occurrence[] {
       isOverride: boolean,
     ): Occurrence => ({
       ...fields,
+      memo:
+        fields.memoScope === "single" &&
+        (fields.memoDate || v.date) !== occurrenceDate
+          ? ""
+          : fields.memo,
+      memoCompleted: !!v.memoCompletions?.[occurrenceDate],
       seriesId: v.id,
       occurrenceDate,
       recurrenceRule: v.recurrenceRule,
@@ -150,13 +209,25 @@ export function changeOccurrence(
   if (!series) return visits;
   if (!series.recurrenceRule)
     return visits.map((v) =>
-      v.id === series.id ? { ...v, ...draft, recurrenceRule: rule } : v,
+      v.id === series.id
+        ? {
+            ...v,
+            ...draft,
+            recurrenceRule: rule,
+            memoCompletions:
+              draft.memo === target.memo ? v.memoCompletions : {},
+          }
+        : v,
     );
   if (scope === "one")
     return visits.map((v) =>
       v.id === series.id
         ? {
             ...v,
+            memoCompletions:
+              draft.memo === target.memo
+                ? v.memoCompletions
+                : { ...v.memoCompletions, [target.occurrenceDate]: false },
             exceptions: {
               ...v.exceptions,
               [target.occurrenceDate]: { override: fieldsOf(draft) },
@@ -183,19 +254,58 @@ export function changeOccurrence(
     ...fieldsOf(draft),
     id,
     recurrenceRule: rule,
+    memoCompletions:
+      draft.memo === target.memo
+        ? Object.fromEntries(
+            Object.entries(series.memoCompletions || {}).filter(
+              ([day]) => day >= target.occurrenceDate,
+            ),
+          )
+        : {},
     // Cancellation records remain visible under the original series, even after a future edit.
     exceptions: Object.fromEntries(
       Object.entries(series.exceptions)
         .filter(
           ([date, exception]) =>
             date >= target.occurrenceDate &&
-            (exception.override?.status === "cancelled" || exception.retainedCancellation),
+            (exception.override?.status === "cancelled" ||
+              exception.retainedCancellation),
         )
         .map(([date]) => [date, { deleted: true, retainedCancellation: true }]),
     ),
   };
   return [...visits.map((v) => (v.id === series.id ? previous : v)), future];
 }
+export function completeMemo(visits: Visit[], target: Occurrence): Visit[] {
+  return visits.map((v) =>
+    v.id === target.seriesId
+      ? {
+          ...v,
+          memoCompletions: {
+            ...v.memoCompletions,
+            [target.occurrenceDate]: true,
+          },
+        }
+      : v,
+  );
+}
+export const hasPendingMemo = (v: Occurrence) =>
+  !!v.memo.trim() && !v.memoCompleted;
+export function monthDays(month: string): string[] {
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return [];
+  const days: string[] = [];
+  for (let day = `${month}-01`; day.startsWith(month); day = addDays(day, 1))
+    days.push(day);
+  return days;
+}
+export function clientMonth(visits: Visit[], clientId: string, month: string) {
+  return monthDays(month).map((date) => ({
+    date,
+    visits: occurrencesOn(visits, date).filter((v) => v.clientId === clientId),
+  }));
+}
+export const weekStart = (date: string) =>
+  addDays(date, -((dayOfWeek(date) + 6) % 7));
 export function removeOccurrence(visits: Visit[], target: Occurrence): Visit[] {
   return visits.flatMap((v) =>
     v.id !== target.seriesId
@@ -307,13 +417,17 @@ export function validateVisit(draft: VisitFields, rule?: RecurrenceRule) {
     return "開始日の曜日を繰り返し曜日に含めてください。";
   return "";
 }
-export function timelineLanes(items: Occurrence[], pixelsPerMinute: number) {
+export function timelineLanes(
+  items: Occurrence[],
+  pixelsPerMinute: number,
+  minimumWidth = 132,
+) {
   const ends: number[] = [];
   return items.map((item) => {
     const start = minutes(item.time);
     const visualEnd = Math.max(
       minutes(item.end),
-      start + 132 / pixelsPerMinute,
+      start + minimumWidth / pixelsPerMinute,
     );
     let lane = ends.findIndex((end) => end <= start);
     if (lane < 0) lane = ends.length;

@@ -11,9 +11,12 @@ import {
   Users,
 } from "lucide-react";
 import { Avatar, DateControl, Empty, Footer, Modal } from "./components";
+import { ClientPicker } from "./Clients";
 import {
   dateLabel,
   fieldsOf,
+  hasPendingMemo,
+  serviceKinds,
   telephoneHref,
   minutes,
   recurrenceLabel,
@@ -28,6 +31,7 @@ import {
   type RecurrenceRule,
   type Staff,
   type VisitFields,
+  type Client,
 } from "./domain";
 
 interface ScheduleProps {
@@ -43,7 +47,6 @@ interface ScheduleProps {
   onChange: (v: Occurrence) => void;
   onAdd: () => void;
 }
-const PIXELS_PER_MINUTE = 3;
 export function Schedule({
   focus,
   items,
@@ -58,6 +61,10 @@ export function Schedule({
   onAdd,
 }: ScheduleProps) {
   const [query, setQuery] = useState("");
+  const [mode, setMode] = useState<"detail" | "overview">("detail");
+  const overview = mode === "overview";
+  const [viewportWidth, setViewportWidth] = useState(350);
+  const minimumCardWidth = overview ? 52 : 132;
   const scroll = useRef<HTMLDivElement>(null);
   const names = staff.filter(
     (s) =>
@@ -73,14 +80,25 @@ export function Schedule({
     18,
     ...relevant.map((v) => Math.ceil(minutes(v.end) / 60) + 1),
   );
+  const PIXELS_PER_MINUTE = overview
+    ? Math.max(180, viewportWidth - 88) / ((endHour - startHour) * 60)
+    : 3;
   const width = (endHour - startHour) * 60 * PIXELS_PER_MINUTE;
+  useEffect(() => {
+    if (!scroll.current) return;
+    const update = () => setViewportWidth(scroll.current!.clientWidth);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(scroll.current);
+    return () => observer.disconnect();
+  }, []);
   useEffect(() => {
     if (scroll.current)
       scroll.current.scrollLeft = Math.max(
         0,
-        (9.75 - startHour) * 60 * PIXELS_PER_MINUTE,
+        overview ? 0 : (9.75 - startHour) * 60 * PIXELS_PER_MINUTE,
       );
-  }, [startHour]);
+  }, [startHour, PIXELS_PER_MINUTE, overview]);
   useEffect(() => {
     if (focus) setQuery("");
   }, [focus]);
@@ -88,13 +106,15 @@ export function Schedule({
     if (!focus || !scroll.current) return;
     scroll.current.scrollLeft = Math.max(
       0,
-      (minutes(focus.time) - startHour * 60 - 5) * PIXELS_PER_MINUTE,
+      overview
+        ? 0
+        : (minutes(focus.time) - startHour * 60 - 5) * PIXELS_PER_MINUTE,
     );
     const row = scroll.current.querySelector<HTMLElement>(
       `[data-staff-id="${focus.staffId}"]`,
     );
     if (row) scroll.current.scrollTop = Math.max(0, row.offsetTop - 36);
-  }, [focus, startHour, query]);
+  }, [focus, startHour, query, PIXELS_PER_MINUTE, overview]);
   return (
     <div className="page schedule">
       <DateControl date={date} onChange={setDate} />
@@ -121,7 +141,11 @@ export function Schedule({
         />
       </label>
       <div className="timeline-guide">
-        <span>横にスワイプして時間を移動</span>
+        <span>
+          {overview
+            ? "時刻と利用者を俯瞰 · タップで詳細"
+            : "横にスワイプして時間を移動"}
+        </span>
         <button onClick={onAdd}>
           <Plus size={16} />
           追加
@@ -136,7 +160,19 @@ export function Schedule({
         ))}
       </div>
       <div
-        className="timeline-scroll"
+        className="schedule-modes"
+        role="group"
+        aria-label="予定表の表示モード"
+      >
+        <button aria-pressed={!overview} onClick={() => setMode("detail")}>
+          詳細表示
+        </button>
+        <button aria-pressed={overview} onClick={() => setMode("overview")}>
+          全体表示
+        </button>
+      </div>
+      <div
+        className={`timeline-scroll ${overview ? "overview" : ""}`}
         ref={scroll}
         tabIndex={0}
         role="region"
@@ -148,19 +184,27 @@ export function Schedule({
             <div className="timeline-hours" style={{ width }}>
               {Array.from({ length: endHour - startHour }, (_, i) => (
                 <span key={i} style={{ width: 60 * PIXELS_PER_MINUTE }}>
-                  {startHour + i}:00
+                  {overview
+                    ? i % 2 === 0
+                      ? `${startHour + i}`
+                      : ""
+                    : `${startHour + i}:00`}
                 </span>
               ))}
+              {overview && <b className="overview-end">{endHour}</b>}
             </div>
           </div>
           {names.map((member) => {
             const entries = timelineLanes(
               relevant.filter((v) => v.staffId === member.id),
               PIXELS_PER_MINUTE,
+              minimumCardWidth,
             );
             const height = Math.max(
-              104,
-              (Math.max(0, ...entries.map((e) => e.lane)) + 1) * 96 + 12,
+              overview ? 64 : 104,
+              (Math.max(0, ...entries.map((e) => e.lane)) + 1) *
+                (overview ? 58 : 96) +
+                12,
             );
             return (
               <div
@@ -182,18 +226,20 @@ export function Schedule({
                 >
                   {entries.map(({ item, lane }) => (
                     <TimelineCard
+                      compact={overview}
                       key={`${item.seriesId}:${item.occurrenceDate}`}
                       visit={item}
-                      left={
+                      left={Math.min(
                         (minutes(item.time) - startHour * 60) *
-                        PIXELS_PER_MINUTE
-                      }
+                          PIXELS_PER_MINUTE,
+                        width - minimumCardWidth,
+                      )}
                       width={Math.max(
-                        132,
+                        minimumCardWidth,
                         (minutes(item.end) - minutes(item.time)) *
                           PIXELS_PER_MINUTE,
                       )}
-                      top={6 + lane * 96}
+                      top={6 + lane * (overview ? 58 : 96)}
                       onOpen={() => onOpen(item)}
                       onChange={() => onChange(item)}
                     />
@@ -213,6 +259,7 @@ export function Schedule({
   );
 }
 function TimelineCard({
+  compact = false,
   visit,
   left,
   width,
@@ -220,6 +267,7 @@ function TimelineCard({
   onOpen,
   onChange,
 }: {
+  compact?: boolean;
   visit: Occurrence;
   left: number;
   width: number;
@@ -270,10 +318,13 @@ function TimelineCard({
           held.current = false;
         }}
       >
-        <b>
-          {visit.time}–{visit.end}
-        </b>
+        <b>{compact ? visit.time : `${visit.time}–${visit.end}`}</b>
         <strong>{visit.client}</strong>
+        {compact && hasPendingMemo(visit) && (
+          <small className="compact-memo" aria-label="未完了のメモあり">
+            !
+          </small>
+        )}
         <span>{visit.type}</span>
         {visit.status === "cancelled" ? (
           <small className="cancel-label">キャンセル</small>
@@ -297,6 +348,15 @@ function TimelineCard({
       >
         <Ellipsis size={16} />
       </button>
+      {hasPendingMemo(visit) && (
+        <button
+          className="timeline-memo memo-alert"
+          aria-label={`${visit.client}の未完了メモを見る`}
+          onClick={onOpen}
+        >
+          !
+        </button>
+      )}
     </div>
   );
 }
@@ -339,6 +399,8 @@ export function ScopeSelector({
   );
 }
 interface FormProps {
+  onSaveClient: (client: Client) => void;
+  clients?: Client[];
   existing: Occurrence | null;
   date: string;
   staff: Staff[];
@@ -352,6 +414,8 @@ interface FormProps {
   onCancel: () => void;
 }
 export function VisitForm({
+  onSaveClient,
+  clients = [],
   existing,
   date,
   staff,
@@ -374,6 +438,9 @@ export function VisitForm({
           type: "定期訪問",
           content: "",
           memo: "",
+          memoScope: "single",
+          memoDate: date,
+          serviceKind: "看護",
           staffId: defaultStaffId,
         },
   );
@@ -393,12 +460,29 @@ export function VisitForm({
         const activeRule = rule
           ? { ...rule, startDate: draft.date }
           : undefined;
-        const message = validateVisit(draft, single ? undefined : activeRule);
+        const selectedClient = clients.find((c) => c.id === draft.clientId);
+        const message = !selectedClient
+          ? "登録済み利用者を選択してください。"
+          : !selectedClient.active && existing?.clientId !== selectedClient.id
+            ? "利用停止中の利用者は選択できません。"
+            : validateVisit(draft, single ? undefined : activeRule);
         if (message) {
           setError(message);
           return;
         }
-        onSave(draft, single ? existing?.recurrenceRule : activeRule, scope);
+        onSave(
+          {
+            ...draft,
+            memoDate:
+              draft.memoScope === "single"
+                ? single
+                  ? existing!.occurrenceDate
+                  : draft.date
+                : undefined,
+          },
+          single ? existing?.recurrenceRule : activeRule,
+          scope,
+        );
       }}
     >
       {existing?.recurrenceRule && (
@@ -417,10 +501,27 @@ export function VisitForm({
         <TimeFields draft={draft} onChange={put} />
       </div>
       <div className="formcard">
+        <ClientPicker
+          clients={clients}
+          offices={offices}
+          staff={staff}
+          value={draft.clientId}
+          onSave={onSaveClient}
+          onSelect={(c) =>
+            setDraft({
+              ...draft,
+              clientId: c.id,
+              client: c.name,
+              phone: c.phone,
+              address: c.address,
+            })
+          }
+        />
         <label>
           訪問先
           <input
             required
+            readOnly
             value={draft.client}
             placeholder="例：A様"
             onChange={(e) => put("client", e.target.value)}
@@ -429,6 +530,7 @@ export function VisitForm({
         <label>
           住所
           <input
+            readOnly
             value={draft.address}
             placeholder="東京都新宿区・サンプル住所"
             onChange={(e) => put("address", e.target.value)}
@@ -437,6 +539,7 @@ export function VisitForm({
         <label>
           電話番号
           <input
+            readOnly
             type="tel"
             autoComplete="tel"
             value={draft.phone}
@@ -456,6 +559,19 @@ export function VisitForm({
           </select>
         </label>
         <label>
+          訪問区分
+          <select
+            value={draft.serviceKind || "看護"}
+            onChange={(e) =>
+              put("serviceKind", e.target.value as VisitFields["serviceKind"])
+            }
+          >
+            {serviceKinds.map((kind) => (
+              <option key={kind}>{kind}</option>
+            ))}
+          </select>
+        </label>
+        <label>
           内容
           <textarea
             value={draft.content}
@@ -471,6 +587,23 @@ export function VisitForm({
             onChange={(e) => put("memo", e.target.value)}
           />
         </label>
+        <label>
+          メモの適用範囲
+          <select
+            value={draft.memoScope || "recurring"}
+            onChange={(e) =>
+              put("memoScope", e.target.value as "single" | "recurring")
+            }
+          >
+            <option value="single">今回のみ</option>
+            <option value="recurring">繰り返し</option>
+          </select>
+        </label>
+        {single && (
+          <p className="field-note">
+            この予定のみ変更中です。次回以降のメモも変更する場合は、上の「今後の予定も変更」を選んでください。
+          </p>
+        )}
         <label>
           担当職員
           <select
@@ -724,6 +857,8 @@ export function Detail({
   onMap,
   onDelete,
   onCancelVisit,
+  onClient,
+  onCompleteMemo,
 }: {
   visit: Occurrence;
   staff: Staff[];
@@ -733,6 +868,8 @@ export function Detail({
   onMap: () => void;
   onDelete: () => void;
   onCancelVisit: () => void;
+  onClient: () => void;
+  onCompleteMemo: () => void;
 }) {
   const owner = staff.find((s) => s.id === visit.staffId);
   const [deleting, setDeleting] = useState(false);
@@ -755,7 +892,9 @@ export function Detail({
         <dl>
           <dt>訪問先・住所</dt>
           <dd>
-            {visit.client}
+            <button className="client-link" onClick={onClient}>
+              {visit.client} <span>月間スケジュールを見る →</span>
+            </button>
             <p>{visit.address || "住所なし"}</p>
           </dd>
           <dt>担当職員</dt>
@@ -775,7 +914,24 @@ export function Detail({
           <dt>内容</dt>
           <dd>{visit.content || "内容なし"}</dd>
           <dt>メモ</dt>
-          <dd>{visit.memo || "メモなし"}</dd>
+          <dd className="preserve-lines">
+            {visit.memo || "メモなし"}
+            {visit.memo && (
+              <>
+                <p>
+                  {visit.memoScope === "single" ? "今回のみ" : "繰り返し"} ·{" "}
+                  {visit.memoCompleted ? "完了" : "未完了"}
+                </p>
+                {hasPendingMemo(visit) && (
+                  <button className="primary" onClick={onCompleteMemo}>
+                    メモ完了
+                  </button>
+                )}
+              </>
+            )}
+          </dd>
+          <dt>訪問区分</dt>
+          <dd>{visit.serviceKind || "未設定"}</dd>
           <dt>繰り返し</dt>
           <dd>
             {recurrenceLabel(visit.recurrenceRule)}
