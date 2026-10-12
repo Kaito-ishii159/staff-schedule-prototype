@@ -7,6 +7,7 @@ import {
   type Staff,
   type Visit,
   type Notice,
+  type Client,
 } from "./domain";
 export const loginStaffId = "staff-1";
 export const officeSeed: Office[] = [
@@ -45,26 +46,34 @@ export const staffSeed: Staff[] = Array.from({ length: 70 }, (_, i) => ({
 const monday = addDays(today, -((dayOfWeek(today) + 6) % 7));
 export const visitSeed: Visit[] = staffSeed.flatMap((staff, i) => {
   const number = i === 0 ? 4 : 2;
-  return Array.from({ length: number }, (_, j): Visit => ({
-    id: `visit-${i + 1}-${j + 1}`,
-    date: i === 0 && j === 0 ? monday : today,
-    time: ["10:00", "11:45", "13:30", "15:00"][j],
-    end: ["10:30", "12:30", "14:15", "15:45"][j],
-    client: `${String.fromCharCode(65 + ((i * 2 + j) % 26))}様`,
-    address: `${officeSeed[Math.floor(i / 10)].address} ${j + 1}番（サンプル）`,
-    phone: "000-0000-0000",
-    status: "active",
-    type: visitTypes[(i + j) % visitTypes.length],
-    content: j === 0 ? "ご家族への説明と書類の確認" : "ご本人・ご家族との相談",
-    memo: j === 0 ? "書類を持参してください。" : "",
-    staffId: staff.id,
-    recurrenceRule: {
-      frequency: "weekly",
-      weekdays: i === 0 && j === 0 ? [1, 3, 4] : [0, 1, 2, 3, 4, 5, 6],
-      startDate: monday,
-    },
-    exceptions: {},
-  }));
+  return Array.from(
+    { length: number },
+    (_, j): Visit => ({
+      id: `visit-${i + 1}-${j + 1}`,
+      clientId: `client-${i + 1}-${j + 1}`,
+      serviceKind:
+        j % 3 === 0 ? "看護" : j % 3 === 1 ? "リハビリ" : "モニタリング",
+      date: i === 0 && j === 0 ? monday : today,
+      time: ["10:00", "11:45", "13:30", "15:00"][j],
+      end: ["10:30", "12:30", "14:15", "15:45"][j],
+      client: `${String.fromCharCode(65 + ((i * 2 + j) % 26))}様`,
+      address: `${officeSeed[Math.floor(i / 10)].address} ${j + 1}番（サンプル）`,
+      phone: "000-0000-0000",
+      status: "active",
+      type: visitTypes[(i + j) % visitTypes.length],
+      content:
+        j === 0 ? "ご家族への説明と書類の確認" : "ご本人・ご家族との相談",
+      memo: j === 0 ? "書類を持参してください。" : "",
+      memoScope: "recurring",
+      staffId: staff.id,
+      recurrenceRule: {
+        frequency: "weekly",
+        weekdays: i === 0 && j === 0 ? [1, 3, 4] : [0, 1, 2, 3, 4, 5, 6],
+        startDate: monday,
+      },
+      exceptions: {},
+    }),
+  );
 });
 // Standalone cancellation samples across offices and months; all contact numbers are placeholders.
 const currentMonth = today.slice(0, 7);
@@ -83,6 +92,10 @@ for (const [index, [staffId, date]] of [
   const member = staffSeed.find((s) => s.id === staffId)!;
   visitSeed.push({
     id: `cancel-demo-${index}`,
+    clientId: `client-cancel-${index}`,
+    serviceKind: "看護",
+    memoScope: "single",
+    memoDate: date,
     date,
     time: "14:30",
     end: "15:00",
@@ -94,6 +107,34 @@ for (const [index, [staffId, date]] of [
     content: "訪問予定",
     memo: "キャンセル済みのサンプルです。",
     staffId,
+    exceptions: {},
+  });
+}
+export const clientSeed: Client[] = visitSeed.map((v) => ({
+  id: v.clientId!,
+  name: v.client,
+  kana: `${v.client.replace("様", "")}サマ`,
+  officeId: staffSeed.find((s) => s.id === v.staffId)!.officeId,
+  active: true,
+  address: v.address,
+  phone: v.phone,
+  ownerId: v.staffId,
+  nextDueMonth: `${currentMonth.slice(0, 4)}-${String(Math.min(12, Number(currentMonth.slice(5)) + 2)).padStart(2, "0")}`,
+}));
+// Same customer, separate service appointments: demonstrates multiple daily visits without guessing service from visit type.
+for (const [index, serviceKind] of (
+  ["リハビリ", "モニタリング", "看護"] as const
+).entries()) {
+  visitSeed.push({
+    ...visitSeed[0],
+    id: `client-calendar-example-${index}`,
+    date: addDays(today, 1),
+    time: ["13:00", "15:00", "16:00"][index],
+    end: ["13:30", "15:30", "16:30"][index],
+    serviceKind,
+    status: index === 2 ? "cancelled" : "active",
+    recurrenceRule: undefined,
+    memo: "",
     exceptions: {},
   });
 }

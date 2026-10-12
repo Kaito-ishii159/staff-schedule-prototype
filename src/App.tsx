@@ -15,7 +15,21 @@ import {
   Route,
   Navigation,
   Check,
+  NotebookPen,
+  Files,
+  ClipboardPlus,
 } from "lucide-react";
+import { ThemeArt, themes } from "./Themes";
+import { ClientManagement } from "./Clients";
+import {
+  ClientCalendar,
+  Documents,
+  FreeNotes,
+  Requests,
+  VisitSummary,
+  WeeklySchedule,
+  type NewRequest,
+} from "./Additional";
 import { Avatar, Empty, Menu, Modal } from "./components";
 import { Schedule, VisitForm, Detail, ChangeSheet } from "./Schedule";
 import { Cancellations } from "./Cancellations";
@@ -23,6 +37,9 @@ import { StaffForm, StaffList, OfficeForm, OfficeList } from "./Admin";
 import { DistancePage, RoutePage, StaffMap, VisitMap } from "./Maps";
 import {
   changeOccurrence,
+  resolveClientVisits,
+  completeMemo,
+  occurrenceKey,
   newId,
   occurrencesOn,
   removeOccurrence,
@@ -33,6 +50,7 @@ import {
   type RecurrenceRule,
   type Theme,
   type VisitFields,
+  type Client,
 } from "./domain";
 import {
   loginStaffId,
@@ -40,6 +58,7 @@ import {
   officeSeed,
   staffSeed,
   visitSeed,
+  clientSeed,
 } from "./data";
 
 type Screen =
@@ -61,6 +80,9 @@ type Screen =
         | "add"
         | "cancellations";
     }
+  | { kind: "weekly" | "documents" | "free-notes" | "requests" | "clients" }
+  | { kind: "client-documents"; clientId: string }
+  | { kind: "client-calendar"; client: Client; date: string }
   | { kind: "detail" | "edit" | "destination"; visit: Occurrence };
 const titles: Record<Screen["kind"], string> = {
   home: "訪問予定",
@@ -81,14 +103,14 @@ const titles: Record<Screen["kind"], string> = {
   detail: "予定詳細",
   destination: "訪問先の位置",
   cancellations: "キャンセル一覧",
+  "client-calendar": "利用者月間スケジュール",
+  weekly: "週間予定",
+  documents: "書類更新管理",
+  "free-notes": "フリーメモ",
+  requests: "新規依頼管理",
+  clients: "利用者管理",
+  "client-documents": "利用者の書類",
 };
-const themes: { id: Theme; name: string; color: string }[] = [
-  { id: "blue", name: "ブルー", color: "#276cb0" },
-  { id: "green", name: "グリーン", color: "#28775e" },
-  { id: "purple", name: "パープル", color: "#7853a4" },
-  { id: "orange", name: "オレンジ", color: "#a85b29" },
-  { id: "simple", name: "シンプル", color: "#4b5965" },
-];
 export default function App() {
   const [loggedIn, setLoggedIn] = useState(false);
   const [cancellationMonth, setCancellationMonth] = useState(today.slice(0, 7));
@@ -97,7 +119,16 @@ export default function App() {
   );
   const [staff, setStaff] = useState(staffSeed);
   const [offices, setOffices] = useState(officeSeed);
-  const [visits, setVisits] = useState(visitSeed);
+  const [storedVisits, setVisits] = useState(visitSeed);
+  const [clients, setClients] = useState(clientSeed);
+  const visits = resolveClientVisits(storedVisits, clients);
+  const saveClient = (client: Client) =>
+    setClients((prev) =>
+      prev.some((c) => c.id === client.id)
+        ? prev.map((c) => (c.id === client.id ? client : c))
+        : [...prev, client],
+    );
+  const [requests, setRequests] = useState<NewRequest[]>([]);
   const [notices, setNotices] = useState(noticeSeed);
   const [screens, setScreens] = useState<Screen[]>([{ kind: "home" }]);
   const screen = screens[screens.length - 1];
@@ -115,9 +146,9 @@ export default function App() {
   const [theme, setTheme] = useState<Theme>(() => {
     try {
       const saved = localStorage.getItem(`visit-theme:${loginStaffId}`);
-      return themes.some((t) => t.id === saved) ? (saved as Theme) : "blue";
+      return themes.some((t) => t.id === saved) ? (saved as Theme) : "polar";
     } catch {
-      return "blue";
+      return "polar";
     }
   });
   useEffect(() => {
@@ -138,6 +169,9 @@ export default function App() {
   const items = occurrencesOn(visits, date);
   const ownItems = items.filter(
     (v) => v.staffId === loginStaffId && v.status !== "cancelled",
+  );
+  const todaysOwnItems = occurrencesOn(visits, today).filter(
+    (v) => v.staffId === self.id,
   );
   const unread = notices.filter((n) => !n.read).length;
   const push = (s: Screen) => {
@@ -165,6 +199,17 @@ export default function App() {
     scope: EditScope,
     target?: Occurrence,
   ) => {
+    const client = clients.find((c) => c.id === draft.clientId);
+    if (!client) {
+      flash("登録済み利用者を選択してください");
+      return;
+    }
+    draft = {
+      ...draft,
+      client: client.name,
+      address: client.address,
+      phone: client.phone,
+    };
     setVisits((previous) =>
       target
         ? changeOccurrence(previous, target, draft, rule, scope, newId())
@@ -192,62 +237,140 @@ export default function App() {
     case "home":
       content = (
         <div className="page home">
+          <div className="home-art">
+            <ThemeArt theme={theme} />
+            <span>MY WORKSPACE</span>
+          </div>
           <h1>ホーム</h1>
           <p className="home-copy">
             {ownOffice.name} · {self.name}
           </p>
-          <div className="home-actions">
-            <button
-              className="home-action featured"
-              onClick={() => go({ kind: "schedule" })}
-            >
-              <CalendarDays />
-              <div>
-                <b>予定を確認</b>
-                <span>職員別のタイムラインを見る</span>
-              </div>
-              <ChevronRight />
-            </button>
-            <button
-              className="home-action"
-              onClick={() => push({ kind: "add" })}
-            >
-              <Plus />
-              <div>
-                <b>予定を追加</b>
-                <span>訪問・繰り返し予定を登録</span>
-              </div>
-              <ChevronRight />
-            </button>
-            <div className="home-split">
-              <button onClick={openOwnMap}>
-                <Map />
-                <b>自分の訪問先</b>
-                <span>今日の訪問順とルート</span>
+          <div className="shortcut-grid">
+            {[
+              {
+                label: "予定登録",
+                icon: <Plus />,
+                action: () => {
+                  setDate(today);
+                  push({ kind: "add" });
+                },
+              },
+              {
+                label: "スケジュール",
+                icon: <CalendarDays />,
+                action: () => go({ kind: "schedule" }),
+              },
+              { label: "マップ", icon: <Map />, action: openOwnMap },
+              {
+                label: "通知",
+                icon: <Bell />,
+                action: () => go({ kind: "notices" }),
+              },
+              {
+                label: "フリーメモ",
+                icon: <NotebookPen />,
+                action: () => push({ kind: "free-notes" }),
+              },
+              {
+                label: "書類管理",
+                icon: <Files />,
+                action: () => push({ kind: "documents" }),
+              },
+              {
+                label: "新規依頼",
+                icon: <ClipboardPlus />,
+                action: () => push({ kind: "requests" }),
+              },
+              {
+                label: "週間予定",
+                icon: <CalendarDays />,
+                action: () => push({ kind: "weekly" }),
+              },
+            ].map((item, i) => (
+              <button key={item.label} onClick={item.action}>
+                <span className={`shortcut-icon shortcut-${i % 4}`}>
+                  {item.icon}
+                </span>
+                <b>{item.label}</b>
               </button>
-              <button onClick={() => push({ kind: "team" })}>
-                <Users />
-                <b>職員位置</b>
-                <span>他職員の最終取得位置</span>
-              </button>
-            </div>
-            <button
-              className="home-action"
-              onClick={() => go({ kind: "notices" })}
-            >
-              <Bell />
-              <div>
-                <b>通知</b>
-                <span>予定に関するお知らせ</span>
-              </div>
-              {unread > 0 && <span className="count-badge">{unread}</span>}
-              <ChevronRight />
-            </button>
+            ))}
           </div>
+          <Menu
+            icon={<Users />}
+            title="職員位置"
+            sub="他職員の最終取得位置"
+            onClick={() => push({ kind: "team" })}
+          />
+          <div className="list-heading">
+            <h2 className="section-heading">本日の予定</h2>
+            <span>{today.slice(5).replace("-", " / ")}</span>
+          </div>
+          {todaysOwnItems.map((v) => (
+            <VisitSummary key={occurrenceKey(v)} visit={v} onOpen={open} />
+          ))}
+          {!todaysOwnItems.length && <Empty>本日の予定はありません。</Empty>}
           <p className="field-note home-note">
-            仕様確認用プロトタイプ · 入力内容は再読み込みでリセットされます。
+            仕様確認用デモ ·
+            予定・新規依頼は再読み込みでリセット。テーマ・フリーメモ・書類チェックはこの端末に保存します。
           </p>
         </div>
+      );
+      break;
+    case "client-calendar":
+      content = (
+        <ClientCalendar
+          client={clients.find((c) => c.id === screen.client.id)!}
+          visits={visits}
+          initialDate={screen.date}
+          onOpen={open}
+        />
+      );
+      break;
+    case "clients":
+      content = (
+        <ClientManagement
+          clients={clients}
+          offices={offices}
+          staff={staff}
+          onSave={saveClient}
+          onCalendar={(client) =>
+            push({ kind: "client-calendar", client, date: today })
+          }
+          onDocuments={(client) =>
+            push({ kind: "client-documents", clientId: client.id })
+          }
+        />
+      );
+      break;
+    case "client-documents": {
+      const client = clients.find((c) => c.id === screen.clientId)!;
+      content = (
+        <Documents clients={[client]} staffId={client.ownerId} clientOnly />
+      );
+      break;
+    }
+    case "weekly":
+      content = <WeeklySchedule visits={visits} staff={staff} onOpen={open} />;
+      break;
+    case "documents":
+      content = <Documents clients={clients} staffId={self.id} />;
+      break;
+    case "free-notes":
+      content = <FreeNotes staffId={self.id} />;
+      break;
+    case "requests":
+      content = (
+        <Requests
+          clients={clients}
+          offices={offices}
+          staff={staff}
+          onSaveClient={saveClient}
+          requests={requests}
+          onAdd={(r) => {
+            setRequests((prev) => [r, ...prev]);
+            flash("新規依頼を登録しました");
+          }}
+        />
       );
       break;
     case "schedule":
@@ -275,6 +398,8 @@ export default function App() {
     case "edit":
       content = (
         <VisitForm
+          onSaveClient={saveClient}
+          clients={clients}
           existing={screen.kind === "edit" ? screen.visit : null}
           date={date}
           staff={formStaff}
@@ -299,7 +424,24 @@ export default function App() {
     case "detail":
       content = (
         <Detail
-          visit={screen.visit}
+          visit={
+            occurrencesOn(visits, screen.visit.date).find(
+              (v) => occurrenceKey(v) === occurrenceKey(screen.visit),
+            ) || screen.visit
+          }
+          onClient={() => {
+            const client = clients.find((c) => c.id === screen.visit.clientId);
+            if (client)
+              push({
+                kind: "client-calendar",
+                client,
+                date: screen.visit.date,
+              });
+          }}
+          onCompleteMemo={() => {
+            setVisits((prev) => completeMemo(prev, screen.visit));
+            flash("この回のメモを完了しました");
+          }}
           staff={staff}
           offices={offices}
           onEdit={() => push({ kind: "edit", visit: screen.visit })}
@@ -538,6 +680,30 @@ export default function App() {
           />
           <h3>管理</h3>
           <Menu
+            icon={<Users />}
+            title="利用者管理"
+            sub="利用者マスタ・基本情報・月間予定"
+            onClick={() => push({ kind: "clients" })}
+          />
+          <Menu
+            icon={<Files />}
+            title="書類更新管理"
+            sub="担当利用者の報告書・計画書"
+            onClick={() => push({ kind: "documents" })}
+          />
+          <Menu
+            icon={<ClipboardPlus />}
+            title="新規依頼管理"
+            sub="法人内の依頼を共有"
+            onClick={() => push({ kind: "requests" })}
+          />
+          <Menu
+            icon={<CalendarDays />}
+            title="週間予定"
+            sub="全職員の1週間"
+            onClick={() => push({ kind: "weekly" })}
+          />
+          <Menu
             icon={<CalendarDays />}
             title="キャンセル一覧"
             sub="月別・事業所別のキャンセル予定"
@@ -600,13 +766,15 @@ export default function App() {
                 aria-pressed={theme === t.id}
                 onClick={() => setTheme(t.id)}
               >
-                <span style={{ background: t.color }} />
+                <ThemeArt theme={t.id} />
                 <b>{t.name}</b>
+                <small>{t.caption}</small>
                 {theme === t.id && <Check size={20} />}
               </button>
             ))}
           </div>
           <div className="theme-preview">
+            <ThemeArt theme={theme} />
             <h3>プレビュー</h3>
             <p>読みやすい文字と落ち着いた配色</p>
             <span className="primary">選択したテーマ</span>
@@ -620,7 +788,7 @@ export default function App() {
   );
   return (
     <div className="shell" data-theme={theme}>
-      <div className="phone">
+      <div className={`phone ${screen.kind === "weekly" ? "wide-phone" : ""}`}>
         {!loggedIn ? (
           <Login
             onLogin={() => {
