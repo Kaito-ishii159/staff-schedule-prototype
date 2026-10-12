@@ -20,6 +20,16 @@ npm test
 
 `npm run build` で `dist/` に静的ファイルを生成します。画面遷移はReact内で管理し、相対アセットパスを使用するためGitHub Pagesのサブディレクトリでも動作します。再読み込みするとログイン画面に戻り、予定・新規依頼などのデモ登録データは初期化されます。テーマ・個人用フリーメモ・書類完了チェックは職員単位で端末内に保存します。実際の認証・アクセス制限ではないため、実情報は入力しないでください。
 
+## 仕様書・本番移行資料
+
+本番iPhoneアプリを実装する際は、READMEだけでなく以下を必ず参照してください。
+
+- [プロダクト仕様書](docs/PRODUCT_SPEC.md)
+- [本番iPhoneアプリ 実装アーキテクチャ指針](docs/PRODUCTION_ARCHITECTURE.md)
+- [AI / Codex向けリポジトリ指示](AGENTS.md)
+
+仕様の優先順位、確定要件、未確定事項、繰り返し予定・利用者マスタ・位置情報・非公開配布等の本番設計方針を記載しています。
+
 ## GitHub Pages
 
 `main` ブランチへプッシュすると、[`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml) がビルド成果物を GitHub Pages に公開します。リポジトリの **Settings → Pages → Build and deployment** で Source を **GitHub Actions** に一度設定してください。
