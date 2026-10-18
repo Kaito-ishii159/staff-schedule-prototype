@@ -49,6 +49,7 @@ export interface Office {
   name: string;
   address: string;
   phone: string;
+  active?: boolean;
 }
 export interface Staff {
   id: string;
@@ -67,6 +68,8 @@ export interface RecurrenceRule {
   endDate?: string;
 }
 export interface VisitFields {
+  transportType?: "private" | "company";
+  vehicleId?: string;
   clientId?: string;
   serviceKind?: ServiceKind;
   date: string;
@@ -141,6 +144,8 @@ export const typeClass = (type: VisitType) =>
   `type-${visitTypes.indexOf(type)}`;
 export function fieldsOf(v: VisitFields): VisitFields {
   return {
+    transportType: v.transportType || "private",
+    vehicleId: v.transportType === "company" ? v.vehicleId : undefined,
     clientId: v.clientId,
     serviceKind: v.serviceKind,
     memoScope: v.memoScope,

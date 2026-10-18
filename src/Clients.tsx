@@ -208,6 +208,7 @@ export function ClientPicker({
 }
 
 export function ClientManagement({
+  onDelete,
   clients,
   offices,
   staff,
@@ -215,6 +216,7 @@ export function ClientManagement({
   onCalendar,
   onDocuments,
 }: {
+  onDelete: (c: Client) => void;
   clients: Client[];
   offices: Office[];
   staff: Staff[];
@@ -275,6 +277,12 @@ export function ClientManagement({
             </button>
             <button className="secondary" onClick={() => setStopping(true)}>
               {selected.active ? "利用を停止" : "利用を再開"}
+            </button>
+            <button
+              className="secondary danger"
+              onClick={() => onDelete(selected)}
+            >
+              利用者を削除
             </button>
           </div>
           <p className="field-note">

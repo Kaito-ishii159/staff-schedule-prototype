@@ -8,6 +8,8 @@ import {
   Users,
 } from "lucide-react";
 import { DateControl, Empty } from "./components";
+import { demoRouteLegs, type travelSummary } from "./operations";
+import { TimeGuide } from "./OperationsUI";
 import {
   dateLabel,
   nextRegisteredVisit,
@@ -40,13 +42,7 @@ const stopPoint = (i: number, count: number) =>
           40 +
           (Math.floor(i / 4) * 350) / Math.max(1, Math.ceil(count / 4) - 1),
       };
-export function demoLegs(items: Occurrence[]) {
-  return items.map((visit, i) => ({
-    visit,
-    distance: [1.2, 0.8, 1.6, 1.1][i % 4],
-    duration: [6, 4, 8, 5][i % 4],
-  }));
-}
+export const demoLegs = demoRouteLegs;
 function totalLabel(items: Occurrence[]) {
   const legs = demoLegs(items);
   return `${legs.reduce((n, l) => n + l.distance, 0).toFixed(1)} km / ${legs.reduce((n, l) => n + l.duration, 0)} 分`;
@@ -317,6 +313,7 @@ export function MapScene({
   );
 }
 export function VisitMap({
+  monthlyTravel,
   items,
   member,
   office,
@@ -327,6 +324,7 @@ export function VisitMap({
   initial,
   single = false,
 }: {
+  monthlyTravel?: ReturnType<typeof travelSummary>;
   items: Occurrence[];
   member: Staff;
   office: Office;
@@ -343,6 +341,9 @@ export function VisitMap({
   );
   const visit = items.find((v) => occurrenceKey(v) === selected) || items[0];
   const number = visit ? items.indexOf(visit) + 1 : 0;
+  const legs = demoLegs(items);
+  const distance = legs.reduce((n, l) => n + l.distance, 0);
+  const duration = legs.reduce((n, l) => n + l.duration, 0);
   return (
     <div className="map-screen">
       {!single && <DateControl date={date} onChange={setDate} />}
@@ -428,6 +429,44 @@ export function VisitMap({
         </div>
       )}
       {!items.length && <Empty>この日の自分の訪問予定はありません。</Empty>}
+      {!single && monthlyTravel && (
+        <section className="travel-burden">
+          <h2>移動負担の目安</h2>
+          <p className="demo-notice">予定ルートによる推定 · デモ</p>
+          <div className="metric-grid">
+            <article>
+              <small>{date === today ? "本日" : "選択日"}の予定移動距離</small>
+              <strong>{distance.toFixed(1)} km</strong>
+            </article>
+            <article>
+              <small>{date === today ? "本日" : "選択日"}の予定移動時間</small>
+              <strong>{duration} 分</strong>
+            </article>
+            <article>
+              <small>選択月の1日平均移動距離</small>
+              <strong>{monthlyTravel.averageDistance.toFixed(1)} km</strong>
+            </article>
+            <article>
+              <small>選択月の1日平均移動時間</small>
+              <strong>{monthlyTravel.averageDuration.toFixed(1)} 分</strong>
+            </article>
+          </div>
+          <p>
+            距離の平均比：
+            {monthlyTravel.averageDistance
+              ? `${distance >= monthlyTravel.averageDistance ? "+" : ""}${((distance / monthlyTravel.averageDistance - 1) * 100).toFixed(0)}%`
+              : "比較対象なし"}
+          </p>
+          <p className="field-note">
+            月平均は移動予定がある日の平均。距離の適否は判定しません。帰着区間を含まない固定デモ値です。
+          </p>
+          {items.length > 0 ? (
+            <TimeGuide duration={duration} />
+          ) : (
+            <p>移動予定なし</p>
+          )}
+        </section>
+      )}
       {!single && items.length > 0 && (
         <div className="map-summary">
           <div>

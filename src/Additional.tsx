@@ -2,6 +2,8 @@ import { useState } from "react";
 import { ChevronLeft, ChevronRight, Plus, Trash2 } from "lucide-react";
 import { Empty, Modal } from "./components";
 import { ClientPicker } from "./Clients";
+import { filterClients, matchingClientIds } from "./operations";
+import { SharedNotes } from "./OperationsUI";
 import {
   addDays,
   clientMonth,
@@ -167,19 +169,28 @@ export function ClientCalendar({
 }
 
 export function WeeklySchedule({
+  clients = [],
   visits,
   staff,
   onOpen,
 }: {
+  clients?: Client[];
   visits: Visit[];
   staff: Staff[];
   onOpen: (v: Occurrence) => void;
 }) {
   const [start, setStart] = useState(weekStart(today));
   const [query, setQuery] = useState("");
+  const [clientQuery, setClientQuery] = useState("");
   const days = Array.from({ length: 7 }, (_, i) => addDays(start, i));
-  const entries = days.map((d) => occurrencesOn(visits, d));
-  const members = staff.filter((s) => s.name.includes(query.trim()));
+  const ids = matchingClientIds(clients, clientQuery);
+  const entries = days.map((d) => filterClients(occurrencesOn(visits, d), ids));
+  const members = staff.filter(
+    (s) =>
+      s.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()) &&
+      (!clientQuery.trim() ||
+        entries.some((items) => items.some((v) => v.staffId === s.id))),
+  );
   return (
     <div className="page weekly-page">
       <div className="period-control">
@@ -211,6 +222,23 @@ export function WeeklySchedule({
           onChange={(e) => setQuery(e.target.value)}
         />
       </label>
+      <label className="search">
+        <input
+          aria-label="週間予定の利用者検索"
+          placeholder="利用者名・フリガナ・IDで検索"
+          value={clientQuery}
+          onChange={(e) => setClientQuery(e.target.value)}
+        />
+      </label>
+      <button
+        className="text-action"
+        onClick={() => {
+          setQuery("");
+          setClientQuery("");
+        }}
+      >
+        検索条件クリア
+      </button>
       <div
         className="week-scroll"
         tabIndex={0}
@@ -363,8 +391,44 @@ export function Documents({
   );
 }
 
+export function FreeNotes({
+  staffId,
+  officeId,
+  staff,
+}: {
+  staffId: string;
+  officeId: string;
+  staff: Staff[];
+}) {
+  const [tab, setTab] = useState<"private" | "shared">("private");
+  return (
+    <>
+      <div className="page notes-tabs">
+        <div className="schedule-modes" role="group" aria-label="メモの種類">
+          <button
+            aria-pressed={tab === "private"}
+            onClick={() => setTab("private")}
+          >
+            個人メモ
+          </button>
+          <button
+            aria-pressed={tab === "shared"}
+            onClick={() => setTab("shared")}
+          >
+            事業所共有
+          </button>
+        </div>
+      </div>
+      {tab === "private" ? (
+        <PrivateNotes staffId={staffId} />
+      ) : (
+        <SharedNotes officeId={officeId} staffId={staffId} staff={staff} />
+      )}
+    </>
+  );
+}
 type Note = { id: string; text: string };
-export function FreeNotes({ staffId }: { staffId: string }) {
+function PrivateNotes({ staffId }: { staffId: string }) {
   const key = `visit-free-notes:${staffId}`;
   const [notes, setNotes] = useState<Note[]>(() => readLocal(key, []));
   const [draft, setDraft] = useState("");
@@ -485,6 +549,8 @@ export function FreeNotes({ staffId }: { staffId: string }) {
 }
 
 export type NewRequest = {
+  requesterStaffId?: string;
+  requesterOfficeId?: string;
   id: string;
   clientId: string;
   source: string;
