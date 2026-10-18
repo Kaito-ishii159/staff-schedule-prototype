@@ -66,6 +66,9 @@ export const visitSeed: Visit[] = staffSeed.flatMap((staff, i) => {
       memo: j === 0 ? "書類を持参してください。" : "",
       memoScope: "recurring",
       staffId: staff.id,
+      transportType: j % 2 === 0 ? "company" : "private",
+      vehicleId:
+        j % 2 === 0 ? `vehicle-${Math.floor(i / 10) + 1}-1` : undefined,
       recurrenceRule: {
         frequency: "weekly",
         weekdays: i === 0 && j === 0 ? [1, 3, 4] : [0, 1, 2, 3, 4, 5, 6],

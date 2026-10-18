@@ -1,18 +1,27 @@
 import { useState } from "react";
 import { Building2, Plus, Search } from "lucide-react";
-import { Avatar, Empty, Footer } from "./components";
+import { Avatar, Empty, Footer, Modal } from "./components";
 import { newId, type Office, type Staff } from "./domain";
 export function StaffList({
   staff,
   offices,
   onAdd,
+  onEdit,
+  onDelete,
+  onWork,
+  onToggle,
 }: {
   staff: Staff[];
   offices: Office[];
   onAdd: () => void;
+  onEdit: (s: Staff) => void;
+  onDelete: (s: Staff) => void;
+  onWork: (s: Staff) => void;
+  onToggle: (s: Staff) => void;
 }) {
   const [query, setQuery] = useState("");
   const [office, setOffice] = useState("all");
+  const [toggling, setToggling] = useState<Staff>();
   const members = staff.filter(
     (s) =>
       (office === "all" || office === s.officeId) &&
@@ -60,31 +69,66 @@ export function StaffList({
             <small>
               {s.role} · 利用{s.active ? "有効" : "無効"}
             </small>
+            <div className="ops-actions">
+              <button className="secondary" onClick={() => onEdit(s)}>
+                編集
+              </button>
+              <button className="secondary" onClick={() => onWork(s)}>
+                勤務設定
+              </button>
+              <button className="secondary" onClick={() => setToggling(s)}>
+                {s.active ? "無効化" : "有効化"}
+              </button>
+              <button className="secondary danger" onClick={() => onDelete(s)}>
+                職員を削除
+              </button>
+            </div>
           </div>
         </article>
       ))}
       {!members.length && <Empty>該当する職員はいません。</Empty>}
+      {toggling && (
+        <Modal
+          title="職員の利用状態を変更しますか？"
+          onClose={() => setToggling(undefined)}
+        >
+          <p>予定や履歴は残ります。</p>
+          <button
+            className="primary full"
+            onClick={() => {
+              onToggle(toggling);
+              setToggling(undefined);
+            }}
+          >
+            確定する
+          </button>
+        </Modal>
+      )}
     </div>
   );
 }
 export function StaffForm({
+  existing,
   offices,
   staff,
   onSave,
   onCancel,
 }: {
+  existing?: Staff;
   offices: Office[];
   staff: Staff[];
   onSave: (s: Staff) => void;
   onCancel: () => void;
 }) {
-  const [draft, setDraft] = useState({
-    name: "",
-    email: "",
-    officeId: offices[0]?.id || "",
-    role: "一般職員" as Staff["role"],
-    active: true,
-  });
+  const [draft, setDraft] = useState(
+    existing || {
+      name: "",
+      email: "",
+      officeId: offices[0]?.id || "",
+      role: "一般職員" as Staff["role"],
+      active: true,
+    },
+  );
   const [error, setError] = useState("");
   return (
     <form
@@ -97,7 +141,9 @@ export function StaffForm({
         }
         if (
           staff.some(
-            (s) => s.email.toLowerCase() === draft.email.trim().toLowerCase(),
+            (s) =>
+              s.id !== existing?.id &&
+              s.email.toLowerCase() === draft.email.trim().toLowerCase(),
           )
         ) {
           setError("このメールアドレスは登録済みです。");
@@ -107,8 +153,8 @@ export function StaffForm({
           ...draft,
           name: draft.name.trim(),
           email: draft.email.trim(),
-          id: newId(),
-          color: "#397d91",
+          id: existing?.id || newId(),
+          color: existing?.color || "#397d91",
         });
       }}
     >
@@ -188,11 +234,18 @@ export function OfficeList({
   offices,
   staff,
   onAdd,
+  onEdit,
+  onDelete,
+  onToggle,
 }: {
   offices: Office[];
   staff: Staff[];
   onAdd: () => void;
+  onEdit: (o: Office) => void;
+  onDelete: (o: Office) => void;
+  onToggle: (o: Office) => void;
 }) {
+  const [toggling, setToggling] = useState<Office>();
   return (
     <div className="page admin">
       <div className="list-heading">
@@ -212,22 +265,55 @@ export function OfficeList({
             <small>
               所属職員 {staff.filter((s) => s.officeId === o.id).length}名
             </small>
+            <p>{o.active === false ? "利用停止" : "利用中"}</p>
+            <div className="ops-actions">
+              <button className="secondary" onClick={() => onEdit(o)}>
+                編集
+              </button>
+              <button className="secondary" onClick={() => setToggling(o)}>
+                {o.active === false ? "事業所の利用を再開" : "事業所を利用停止"}
+              </button>
+              <button className="secondary danger" onClick={() => onDelete(o)}>
+                事業所を削除
+              </button>
+            </div>
           </div>
         </article>
       ))}
+      {toggling && (
+        <Modal
+          title="事業所の利用状態を変更しますか？"
+          onClose={() => setToggling(undefined)}
+        >
+          <p>所属職員・利用者・履歴は残ります。</p>
+          <button
+            className="primary full"
+            onClick={() => {
+              onToggle(toggling);
+              setToggling(undefined);
+            }}
+          >
+            確定する
+          </button>
+        </Modal>
+      )}
     </div>
   );
 }
 export function OfficeForm({
+  existing,
   offices,
   onSave,
   onCancel,
 }: {
+  existing?: Office;
   offices: Office[];
   onSave: (o: Office) => void;
   onCancel: () => void;
 }) {
-  const [draft, setDraft] = useState({ name: "", address: "", phone: "" });
+  const [draft, setDraft] = useState(
+    existing || { name: "", address: "", phone: "", active: true },
+  );
   const [error, setError] = useState("");
   return (
     <form
@@ -242,12 +328,17 @@ export function OfficeForm({
           setError("すべての項目を入力してください。");
           return;
         }
-        if (offices.some((o) => o.name === draft.name.trim())) {
+        if (
+          offices.some(
+            (o) => o.id !== existing?.id && o.name === draft.name.trim(),
+          )
+        ) {
           setError("この事業所名は登録済みです。");
           return;
         }
         onSave({
-          id: newId(),
+          id: existing?.id || newId(),
+          active: draft.active,
           name: draft.name.trim(),
           address: draft.address.trim(),
           phone: draft.phone.trim(),

@@ -18,7 +18,33 @@ import {
   NotebookPen,
   Files,
   ClipboardPlus,
+  Car,
+  ClipboardCheck,
 } from "lucide-react";
+import {
+  AlcoholChecks,
+  MasterDeleteDialog,
+  TravelTotals,
+  VehicleHistory,
+  Vehicles,
+  WorkSettings,
+} from "./OperationsUI";
+import {
+  alcoholSeed,
+  vehicleArchiveSeed,
+  vehicleSeed,
+  workPatternSeed,
+} from "./operationData";
+import {
+  deletionReasons,
+  localEntries,
+  saveAlcoholRecord,
+  vehicleUse,
+  travelSummary,
+  type AlcoholCheckRecord,
+  type MasterKind,
+  type StaffWorkException,
+} from "./operations";
 import { ThemeArt, themes } from "./Themes";
 import { ClientManagement } from "./Clients";
 import {
@@ -51,6 +77,8 @@ import {
   type Theme,
   type VisitFields,
   type Client,
+  type Staff,
+  type Office,
 } from "./domain";
 import {
   loginStaffId,
@@ -81,10 +109,18 @@ type Screen =
         | "cancellations";
     }
   | { kind: "weekly" | "documents" | "free-notes" | "requests" | "clients" }
+  | { kind: "vehicles" | "travel-totals" | "alcohol" }
+  | { kind: "work-settings"; staffId: string }
+  | { kind: "vehicle-history"; vehicleId?: string; staffId?: string }
   | { kind: "client-documents"; clientId: string }
   | { kind: "client-calendar"; client: Client; date: string }
   | { kind: "detail" | "edit" | "destination"; visit: Occurrence };
 const titles: Record<Screen["kind"], string> = {
+  vehicles: "車両管理",
+  "vehicle-history": "車両利用履歴",
+  "travel-totals": "移動集計",
+  alcohol: "アルコールチェック",
+  "work-settings": "勤務設定",
   home: "訪問予定",
   schedule: "予定表",
   map: "自分の訪問先",
@@ -118,6 +154,19 @@ export default function App() {
     officeSeed[0].id,
   );
   const [staff, setStaff] = useState(staffSeed);
+  const [vehicles, setVehicles] = useState(vehicleSeed);
+  const [vehicleArchive, setVehicleArchive] = useState(vehicleArchiveSeed);
+  const [alcohol, setAlcohol] = useState<AlcoholCheckRecord[]>(alcoholSeed);
+  const [workPatterns, setWorkPatterns] = useState(workPatternSeed);
+  const [workExceptions, setWorkExceptions] = useState<StaffWorkException[]>(
+    [],
+  );
+  const [editingStaff, setEditingStaff] = useState<Staff>();
+  const [editingOffice, setEditingOffice] = useState<Office>();
+  const [deleteTarget, setDeleteTarget] = useState<{
+    kind: MasterKind;
+    id: string;
+  }>();
   const [offices, setOffices] = useState(officeSeed);
   const [storedVisits, setVisits] = useState(visitSeed);
   const [clients, setClients] = useState(clientSeed);
@@ -129,6 +178,28 @@ export default function App() {
         : [...prev, client],
     );
   const [requests, setRequests] = useState<NewRequest[]>([]);
+  const referenceData = () => ({
+    visits: storedVisits,
+    clients,
+    staff,
+    offices,
+    vehicles,
+    vehicleArchive,
+    alcohol,
+    patterns: workPatterns,
+    workExceptions,
+    requests,
+    selfId: loginStaffId,
+    localEntries: localEntries(),
+  });
+  const archiveVehicle = (v: Occurrence) => {
+    const use = vehicleUse(v, staff);
+    if (use)
+      setVehicleArchive((prev) => [
+        ...prev,
+        { ...use, id: `${use.id}:revision:${newId()}`, archived: true },
+      ]);
+  };
   const [notices, setNotices] = useState(noticeSeed);
   const [screens, setScreens] = useState<Screen[]>([{ kind: "home" }]);
   const screen = screens[screens.length - 1];
@@ -209,7 +280,10 @@ export default function App() {
       client: client.name,
       address: client.address,
       phone: client.phone,
+      vehicleId:
+        draft.transportType === "company" ? draft.vehicleId : undefined,
     };
+    if (target) archiveVehicle(target);
     setVisits((previous) =>
       target
         ? changeOccurrence(previous, target, draft, rule, scope, newId())
@@ -234,6 +308,82 @@ export default function App() {
         : self.officeId;
   const formStaff = staff.filter((s) => s.officeId === formOfficeId);
   switch (screen.kind) {
+    case "vehicles":
+      content = (
+        <Vehicles
+          vehicles={vehicles}
+          offices={offices}
+          onSave={(v) =>
+            setVehicles((prev) =>
+              prev.some((p) => p.id === v.id)
+                ? prev.map((p) => (p.id === v.id ? v : p))
+                : [...prev, v],
+            )
+          }
+          onDelete={(v) => setDeleteTarget({ kind: "vehicle", id: v.id })}
+          onHistory={(vehicleId) =>
+            push({ kind: "vehicle-history", vehicleId })
+          }
+        />
+      );
+      break;
+    case "vehicle-history":
+      content = (
+        <VehicleHistory
+          visits={visits}
+          staff={staff}
+          offices={offices}
+          clients={clients}
+          vehicles={vehicles}
+          archive={vehicleArchive}
+          initialVehicleId={screen.vehicleId}
+          initialStaffId={screen.staffId}
+        />
+      );
+      break;
+    case "travel-totals":
+      content = (
+        <TravelTotals
+          visits={visits}
+          staff={staff}
+          offices={offices}
+          selfId={self.id}
+        />
+      );
+      break;
+    case "alcohol":
+      content = (
+        <AlcoholChecks
+          records={alcohol}
+          vehicles={vehicles}
+          staff={staff}
+          offices={offices}
+          onSave={(r) => setAlcohol((prev) => saveAlcoholRecord(prev, r))}
+        />
+      );
+      break;
+    case "work-settings":
+      content = (
+        <WorkSettings
+          member={staff.find((s) => s.id === screen.staffId)!}
+          patterns={workPatterns}
+          exceptions={workExceptions}
+          onHistory={() =>
+            push({ kind: "vehicle-history", staffId: screen.staffId })
+          }
+          onSave={(patterns, exceptions) => {
+            setWorkPatterns((prev) => [
+              ...prev.filter((p) => p.staffId !== screen.staffId),
+              ...patterns,
+            ]);
+            setWorkExceptions((prev) => [
+              ...prev.filter((p) => p.staffId !== screen.staffId),
+              ...exceptions,
+            ]);
+          }}
+        />
+      );
+      break;
     case "home":
       content = (
         <div className="page home">
@@ -329,6 +479,7 @@ export default function App() {
     case "clients":
       content = (
         <ClientManagement
+          onDelete={(c) => setDeleteTarget({ kind: "client", id: c.id })}
           clients={clients}
           offices={offices}
           staff={staff}
@@ -350,13 +501,22 @@ export default function App() {
       break;
     }
     case "weekly":
-      content = <WeeklySchedule visits={visits} staff={staff} onOpen={open} />;
+      content = (
+        <WeeklySchedule
+          clients={clients}
+          visits={visits}
+          staff={staff}
+          onOpen={open}
+        />
+      );
       break;
     case "documents":
       content = <Documents clients={clients} staffId={self.id} />;
       break;
     case "free-notes":
-      content = <FreeNotes staffId={self.id} />;
+      content = (
+        <FreeNotes staffId={self.id} officeId={self.officeId} staff={staff} />
+      );
       break;
     case "requests":
       content = (
@@ -367,7 +527,14 @@ export default function App() {
           onSaveClient={saveClient}
           requests={requests}
           onAdd={(r) => {
-            setRequests((prev) => [r, ...prev]);
+            setRequests((prev) => [
+              {
+                ...r,
+                requesterStaffId: self.id,
+                requesterOfficeId: self.officeId,
+              },
+              ...prev,
+            ]);
             flash("新規依頼を登録しました");
           }}
         />
@@ -376,6 +543,9 @@ export default function App() {
     case "schedule":
       content = (
         <Schedule
+          clients={clients}
+          workPatterns={workPatterns}
+          workExceptions={workExceptions}
           focus={focusVisit?.date === date ? focusVisit : undefined}
           items={items}
           staff={staff}
@@ -398,6 +568,7 @@ export default function App() {
     case "edit":
       content = (
         <VisitForm
+          vehicles={vehicles}
           onSaveClient={saveClient}
           clients={clients}
           existing={screen.kind === "edit" ? screen.visit : null}
@@ -424,6 +595,7 @@ export default function App() {
     case "detail":
       content = (
         <Detail
+          vehicles={vehicles}
           visit={
             occurrencesOn(visits, screen.visit.date).find(
               (v) => occurrenceKey(v) === occurrenceKey(screen.visit),
@@ -448,12 +620,14 @@ export default function App() {
           onChange={() => setChange(screen.visit)}
           onMap={() => push({ kind: "destination", visit: screen.visit })}
           onDelete={() => {
+            archiveVehicle(screen.visit);
             setVisits((v) => removeOccurrence(v, screen.visit));
             setDate(screen.visit.date);
             go({ kind: "schedule" });
             flash("この予定を削除しました");
           }}
           onCancelVisit={() => {
+            archiveVehicle(screen.visit);
             const cancelled = { ...screen.visit, status: "cancelled" as const };
             setVisits((v) => cancelOccurrence(v, screen.visit));
             setDate(screen.visit.date);
@@ -486,6 +660,7 @@ export default function App() {
     case "map":
       content = (
         <VisitMap
+          monthlyTravel={travelSummary(visits, self.id, date.slice(0, 7))}
           items={ownItems}
           member={self}
           office={ownOffice}
@@ -532,7 +707,23 @@ export default function App() {
         <StaffList
           staff={staff}
           offices={offices}
-          onAdd={() => push({ kind: "staff-add" })}
+          onAdd={() => {
+            setEditingStaff(undefined);
+            push({ kind: "staff-add" });
+          }}
+          onEdit={(s) => {
+            setEditingStaff(s);
+            push({ kind: "staff-add" });
+          }}
+          onDelete={(s) => setDeleteTarget({ kind: "staff", id: s.id })}
+          onToggle={(s) =>
+            setStaff((prev) =>
+              prev.map((p) =>
+                p.id === s.id ? { ...s, active: !s.active } : p,
+              ),
+            )
+          }
+          onWork={(s) => push({ kind: "work-settings", staffId: s.id })}
         />
       );
       break;
@@ -553,11 +744,16 @@ export default function App() {
     case "staff-add":
       content = (
         <StaffForm
+          existing={editingStaff}
           staff={staff}
           offices={offices}
           onCancel={back}
           onSave={(s) => {
-            setStaff((prev) => [...prev, s]);
+            setStaff((prev) =>
+              prev.some((p) => p.id === s.id)
+                ? prev.map((p) => (p.id === s.id ? s : p))
+                : [...prev, s],
+            );
             back();
             flash("職員を登録しました");
           }}
@@ -569,17 +765,37 @@ export default function App() {
         <OfficeList
           offices={offices}
           staff={staff}
-          onAdd={() => push({ kind: "office-add" })}
+          onAdd={() => {
+            setEditingOffice(undefined);
+            push({ kind: "office-add" });
+          }}
+          onEdit={(o) => {
+            setEditingOffice(o);
+            push({ kind: "office-add" });
+          }}
+          onDelete={(o) => setDeleteTarget({ kind: "office", id: o.id })}
+          onToggle={(o) =>
+            setOffices((prev) =>
+              prev.map((p) =>
+                p.id === o.id ? { ...o, active: o.active === false } : p,
+              ),
+            )
+          }
         />
       );
       break;
     case "office-add":
       content = (
         <OfficeForm
+          existing={editingOffice}
           offices={offices}
           onCancel={back}
           onSave={(o) => {
-            setOffices((prev) => [...prev, o]);
+            setOffices((prev) =>
+              prev.some((p) => p.id === o.id)
+                ? prev.map((p) => (p.id === o.id ? o : p))
+                : [...prev, o],
+            );
             back();
             flash("事業所を登録しました");
           }}
@@ -679,6 +895,24 @@ export default function App() {
             onClick={() => push({ kind: "theme" })}
           />
           <h3>管理</h3>
+          <Menu
+            icon={<Car />}
+            title="車両管理"
+            sub="登録・利用状態・車両利用履歴"
+            onClick={() => push({ kind: "vehicles" })}
+          />
+          <Menu
+            icon={<Navigation />}
+            title="移動集計"
+            sub="月別・職員別の予定ルート推定"
+            onClick={() => push({ kind: "travel-totals" })}
+          />
+          <Menu
+            icon={<ClipboardCheck />}
+            title="アルコールチェック"
+            sub="手入力の確認記録（デモ）"
+            onClick={() => push({ kind: "alcohol" })}
+          />
           <Menu
             icon={<Users />}
             title="利用者管理"
@@ -815,7 +1049,13 @@ export default function App() {
                   <CalendarDays size={19} />
                 </span>
               )}
-              <span className="header-title">{titles[screen.kind]}</span>
+              <span className="header-title">
+                {screen.kind === "staff-add" && editingStaff
+                  ? "職員を編集"
+                  : screen.kind === "office-add" && editingOffice
+                    ? "事業所を編集"
+                    : titles[screen.kind]}
+              </span>
               <span className="demo">DEMO</span>
               <button
                 className="iconbtn"
@@ -889,6 +1129,51 @@ export default function App() {
                 }
               />
             )}{" "}
+            {deleteTarget && (
+              <MasterDeleteDialog
+                label={
+                  {
+                    client: "利用者",
+                    staff: "職員",
+                    office: "事業所",
+                    vehicle: "車両",
+                  }[deleteTarget.kind]
+                }
+                reasons={deletionReasons(
+                  deleteTarget.kind,
+                  deleteTarget.id,
+                  referenceData(),
+                )}
+                onClose={() => setDeleteTarget(undefined)}
+                onDelete={() => {
+                  if (
+                    deletionReasons(
+                      deleteTarget.kind,
+                      deleteTarget.id,
+                      referenceData(),
+                    ).length
+                  ) {
+                    flash("関連データがあるため削除できません");
+                    return;
+                  }
+                  const { kind, id } = deleteTarget;
+                  if (kind === "client")
+                    setClients((prev) => prev.filter((c) => c.id !== id));
+                  if (kind === "staff")
+                    setStaff((prev) => prev.filter((s) => s.id !== id));
+                  if (kind === "office") {
+                    setOffices((prev) => prev.filter((o) => o.id !== id));
+                    if (officeId === id) setOfficeId(self.officeId);
+                    if (cancellationOfficeId === id)
+                      setCancellationOfficeId(self.officeId);
+                  }
+                  if (kind === "vehicle")
+                    setVehicles((prev) => prev.filter((v) => v.id !== id));
+                  setDeleteTarget(undefined);
+                  flash("削除しました");
+                }}
+              />
+            )}
             {logout && (
               <Modal
                 title="ログアウトしますか？"

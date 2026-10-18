@@ -1,0 +1,196 @@
+.ops-filters {
+  display: grid;
+  gap: 12px;
+  margin: 16px 0;
+}
+.ops-filters label,
+.ops-filter {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 650;
+  min-width: 0;
+}
+.ops-filters input,
+.ops-filters select,
+.ops-filter select,
+.work-day input,
+.work-day select {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--line, #dce5e9);
+  border-radius: 10px;
+  background: var(--surface, #fff);
+  padding: 12px;
+  color: inherit;
+  font: inherit;
+  min-height: 44px;
+}
+.ops-filter {
+  margin: 12px 0;
+}
+.ops-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+.ops-actions button {
+  min-height: 44px;
+  font-size: 12px;
+  padding: 9px 5px;
+}
+.admin-row > div {
+  min-width: 0;
+  flex: 1;
+}
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 14px 0;
+}
+.metric-grid article {
+  border: 1px solid var(--line, #e0e7eb);
+  border-radius: 14px;
+  background: var(--surface, #fff);
+  padding: 14px 10px;
+}
+.metric-grid small {
+  display: block;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--muted, #647780);
+}
+.metric-grid strong {
+  display: block;
+  font-size: 21px;
+  margin-top: 8px;
+}
+.demo-notice {
+  font-size: 12px;
+  line-height: 1.6;
+  background: #eaf4f6;
+  color: #27616f;
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+.time-guide {
+  padding: 14px;
+  background: var(--surface, #fff);
+  border: 1px solid var(--line, #e1e6e8);
+  border-radius: 12px;
+  margin: 16px 0;
+  font-size: 12px;
+}
+.time-guide summary {
+  cursor: pointer;
+  font-weight: 700;
+  line-height: 1.7;
+}
+.time-guide dl > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 12px 0;
+}
+.time-guide dd {
+  margin: 0;
+}
+.ops-detail > div {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line, #e1e6e8);
+}
+.ops-detail dt {
+  font-size: 12px;
+  color: var(--muted, #667780);
+}
+.ops-detail dd {
+  margin: 6px 0;
+  overflow-wrap: anywhere;
+}
+.work-day {
+  padding: 12px;
+  background: var(--surface, #fff);
+  border-radius: 12px;
+  margin: 10px 0;
+  border: 1px solid var(--line, #e1e6e8);
+}
+.work-day > label {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  font-weight: bold;
+}
+.work-day select {
+  flex: 1;
+}
+.work-day .time-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 12px;
+}
+.work-day label {
+  font-size: 12px;
+}
+.nonworking-range {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    135deg,
+    rgba(102, 117, 130, 0.11) 0,
+    rgba(102, 117, 130, 0.11) 2px,
+    rgba(102, 117, 130, 0.025) 2px,
+    rgba(102, 117, 130, 0.025) 8px
+  );
+  z-index: 0;
+}
+.pinch-hint {
+  color: var(--muted, #647780);
+  font-size: 10px;
+  line-height: 1.6;
+  margin: 9px 0;
+}
+.notes-tabs {
+  padding-bottom: 0;
+}
+.block {
+  display: block;
+  margin-top: 8px;
+  color: var(--muted, #647780);
+}
+.travel-burden {
+  margin: 14px;
+  padding: 14px;
+  border-radius: 16px;
+  background: var(--surface, #fff);
+  border: 1px solid var(--line, #e1e6e8);
+}
+.travel-burden h2 {
+  font-size: 16px;
+  margin: 0 0 12px;
+}
+.alcohol-item {
+  text-align: left;
+}
+.alcohol-item > span {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.alcohol-item > b {
+  display: block;
+  font-size: 14px;
+}
+.operations-page p {
+  line-height: 1.7;
+}
+@media (min-width: 640px) {
+  .ops-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

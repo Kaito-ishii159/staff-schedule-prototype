@@ -1,4 +1,14 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
+import { useSchedulePinch } from "./useSchedulePinch";
+import {
+  filterClients,
+  matchingClientIds,
+  nonWorkingRanges,
+  validateTransport,
+  type StaffWorkPattern,
+  type StaffWorkException,
+  type Vehicle,
+} from "./operations";
 import {
   Building2,
   Plus,
@@ -35,6 +45,9 @@ import {
 } from "./domain";
 
 interface ScheduleProps {
+  clients?: Client[];
+  workPatterns?: StaffWorkPattern[];
+  workExceptions?: StaffWorkException[];
   focus?: VisitFields;
   items: Occurrence[];
   staff: Staff[];
@@ -48,6 +61,9 @@ interface ScheduleProps {
   onAdd: () => void;
 }
 export function Schedule({
+  clients = [],
+  workPatterns = [],
+  workExceptions = [],
   focus,
   items,
   staff,
@@ -61,17 +77,26 @@ export function Schedule({
   onAdd,
 }: ScheduleProps) {
   const [query, setQuery] = useState("");
+  const [clientQuery, setClientQuery] = useState("");
   const [mode, setMode] = useState<"detail" | "overview">("detail");
   const overview = mode === "overview";
   const [viewportWidth, setViewportWidth] = useState(350);
   const minimumCardWidth = overview ? 52 : 132;
   const scroll = useRef<HTMLDivElement>(null);
+  const gesture = useSchedulePinch(scroll, setMode);
+  const filteredItems = filterClients(
+    items,
+    matchingClientIds(clients, clientQuery),
+  );
   const names = staff.filter(
     (s) =>
       s.officeId === officeId &&
-      s.name.toLowerCase().includes(query.trim().toLowerCase()),
+      s.name.toLowerCase().includes(query.trim().toLowerCase()) &&
+      (!clientQuery.trim() || filteredItems.some((v) => v.staffId === s.id)),
   );
-  const relevant = items.filter((v) => names.some((s) => s.id === v.staffId));
+  const relevant = filteredItems.filter((v) =>
+    names.some((s) => s.id === v.staffId),
+  );
   const startHour = Math.min(
     8,
     ...relevant.map((v) => Math.floor(minutes(v.time) / 60)),
@@ -100,7 +125,10 @@ export function Schedule({
       );
   }, [startHour, PIXELS_PER_MINUTE, overview]);
   useEffect(() => {
-    if (focus) setQuery("");
+    if (focus) {
+      setQuery("");
+      setClientQuery("");
+    }
   }, [focus]);
   useEffect(() => {
     if (!focus || !scroll.current) return;
@@ -136,10 +164,31 @@ export function Schedule({
         <Search size={18} />
         <input
           placeholder="職員名で検索"
+          aria-label="職員検索"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
       </label>
+      <label className="search">
+        <Search size={18} />
+        <input
+          aria-label="利用者検索"
+          placeholder="利用者名・フリガナ・IDで検索"
+          value={clientQuery}
+          onChange={(e) => setClientQuery(e.target.value)}
+        />
+      </label>
+      {(query || clientQuery) && (
+        <button
+          className="text-action"
+          onClick={() => {
+            setQuery("");
+            setClientQuery("");
+          }}
+        >
+          検索条件クリア
+        </button>
+      )}
       <div className="timeline-guide">
         <span>
           {overview
@@ -171,6 +220,9 @@ export function Schedule({
           全体表示
         </button>
       </div>
+      <p className="pinch-hint">
+        2本指でも表示を切り替えられます · 斜線背景は登録勤務時間外
+      </p>
       <div
         className={`timeline-scroll ${overview ? "overview" : ""}`}
         ref={scroll}
@@ -224,8 +276,28 @@ export function Schedule({
                     backgroundSize: `${60 * PIXELS_PER_MINUTE}px 100%`,
                   }}
                 >
+                  {nonWorkingRanges(
+                    member.id,
+                    date,
+                    workPatterns,
+                    workExceptions,
+                    startHour * 60,
+                    endHour * 60,
+                  ).map((range, i) => (
+                    <div
+                      key={i}
+                      className="nonworking-range"
+                      aria-label={`${member.name}の勤務外（勤務設定）`}
+                      style={{
+                        left:
+                          (range.start - startHour * 60) * PIXELS_PER_MINUTE,
+                        width: (range.end - range.start) * PIXELS_PER_MINUTE,
+                      }}
+                    />
+                  ))}
                   {entries.map(({ item, lane }) => (
                     <TimelineCard
+                      gesture={gesture}
                       compact={overview}
                       key={`${item.seriesId}:${item.occurrenceDate}`}
                       visit={item}
@@ -259,6 +331,7 @@ export function Schedule({
   );
 }
 function TimelineCard({
+  gesture,
   compact = false,
   visit,
   left,
@@ -267,6 +340,7 @@ function TimelineCard({
   onOpen,
   onChange,
 }: {
+  gesture?: RefObject<{ active: boolean; version: number }>;
   compact?: boolean;
   visit: Occurrence;
   left: number;
@@ -278,6 +352,7 @@ function TimelineCard({
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const origin = useRef({ x: 0, y: 0 });
   const held = useRef(false);
+  const gestureVersion = useRef(0);
   const stop = () => {
     clearTimeout(timer.current);
   };
@@ -292,10 +367,16 @@ function TimelineCard({
         aria-label={`${visit.time}–${visit.end} ${visit.client} ${visit.type}${visit.status === "cancelled" ? " キャンセル" : visit.recurrenceRule ? ` ${visit.isOverride ? "この日の変更" : "繰り返し"}` : ""}`}
         onContextMenu={(e) => e.preventDefault()}
         onPointerDown={(e) => {
-          if (e.button !== 0) return;
+          if (e.button !== 0 || gesture?.current.active) return;
+          gestureVersion.current = gesture?.current.version || 0;
           held.current = false;
           origin.current = { x: e.clientX, y: e.clientY };
           timer.current = setTimeout(() => {
+            if (
+              gesture?.current.active ||
+              gestureVersion.current !== (gesture?.current.version || 0)
+            )
+              return;
             held.current = true;
             if (visit.status === "cancelled") onOpen();
             else onChange();
@@ -314,7 +395,12 @@ function TimelineCard({
         onPointerCancel={stop}
         onPointerLeave={stop}
         onClick={() => {
-          if (!held.current) onOpen();
+          if (
+            !held.current &&
+            !gesture?.current.active &&
+            gestureVersion.current === (gesture?.current.version || 0)
+          )
+            onOpen();
           held.current = false;
         }}
       >
@@ -399,6 +485,7 @@ export function ScopeSelector({
   );
 }
 interface FormProps {
+  vehicles?: Vehicle[];
   onSaveClient: (client: Client) => void;
   clients?: Client[];
   existing: Occurrence | null;
@@ -414,6 +501,7 @@ interface FormProps {
   onCancel: () => void;
 }
 export function VisitForm({
+  vehicles = [],
   onSaveClient,
   clients = [],
   existing,
@@ -442,6 +530,7 @@ export function VisitForm({
           memoDate: date,
           serviceKind: "看護",
           staffId: defaultStaffId,
+          transportType: "private",
         },
   );
   const [rule, setRule] = useState<RecurrenceRule | undefined>(
@@ -465,7 +554,13 @@ export function VisitForm({
           ? "登録済み利用者を選択してください。"
           : !selectedClient.active && existing?.clientId !== selectedClient.id
             ? "利用停止中の利用者は選択できません。"
-            : validateVisit(draft, single ? undefined : activeRule);
+            : validateVisit(draft, single ? undefined : activeRule) ||
+              validateTransport(
+                draft,
+                vehicles,
+                staff.find((s) => s.id === draft.staffId)?.officeId || "",
+                existing || undefined,
+              );
         if (message) {
           setError(message);
           return;
@@ -501,6 +596,47 @@ export function VisitForm({
         <TimeFields draft={draft} onChange={put} />
       </div>
       <div className="formcard">
+        <label>
+          移動手段
+          <select
+            value={draft.transportType || "private"}
+            onChange={(e) =>
+              setDraft({
+                ...draft,
+                transportType: e.target.value as "private" | "company",
+                vehicleId: undefined,
+              })
+            }
+          >
+            <option value="private">自家用車</option>
+            <option value="company">社用車</option>
+          </select>
+        </label>
+        {draft.transportType === "company" && (
+          <label>
+            社用車
+            <select
+              required
+              value={draft.vehicleId || ""}
+              onChange={(e) => put("vehicleId", e.target.value)}
+            >
+              <option value="">車両を選択</option>
+              {vehicles
+                .filter(
+                  (v) =>
+                    v.officeId ===
+                      staff.find((s) => s.id === draft.staffId)?.officeId &&
+                    (v.active || v.id === existing?.vehicleId),
+                )
+                .map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.label} · {v.number}
+                    {!v.active ? "（利用停止）" : ""}
+                  </option>
+                ))}
+            </select>
+          </label>
+        )}
         <ClientPicker
           clients={clients}
           offices={offices}
@@ -849,6 +985,7 @@ export function ChangeSheet({
   );
 }
 export function Detail({
+  vehicles = [],
   visit,
   staff,
   offices,
@@ -860,6 +997,7 @@ export function Detail({
   onClient,
   onCompleteMemo,
 }: {
+  vehicles?: Vehicle[];
   visit: Occurrence;
   staff: Staff[];
   offices: Office[];
@@ -913,6 +1051,19 @@ export function Detail({
           </dd>
           <dt>内容</dt>
           <dd>{visit.content || "内容なし"}</dd>
+          <dt>移動手段</dt>
+          <dd>
+            {visit.transportType === "company"
+              ? `社用車 · ${vehicles.find((v) => v.id === visit.vehicleId)?.label || "車両未設定"}`
+              : "自家用車"}
+          </dd>
+          <dt>車両番号</dt>
+          <dd>
+            {visit.transportType === "company"
+              ? vehicles.find((v) => v.id === visit.vehicleId)?.number ||
+                "未設定"
+              : "対象外"}
+          </dd>
           <dt>メモ</dt>
           <dd className="preserve-lines">
             {visit.memo || "メモなし"}

@@ -1,6 +1,6 @@
 # 本番iPhoneアプリ 実装アーキテクチャ指針
 
-最終更新: 2026-10-12
+最終更新: 2026-10-18
 
 この文書は `PRODUCT_SPEC.md` の業務要件を本番iPhoneアプリへ移行する際の技術指針です。技術選定の一部は「推奨」であり、顧客確定仕様ではありません。
 
@@ -92,6 +92,8 @@ FirebaseやGoogle Mapsは必須ではありません。
 - content
 - defaultMemo
 - memoScope
+- transportType (private / company)
+- vehicleId (companyの場合必須)
 - startDate
 - startTime
 - endTime
@@ -116,6 +118,8 @@ FirebaseやGoogle Mapsは必須ではありません。
 - overrideStaffId
 - overrideContent
 - overrideMemo
+- overrideTransportType
+- overrideVehicleId
 - status
 - deleted
 - createdAt
@@ -446,3 +450,38 @@ Webプロトタイプは仕様・UX確認のための資料です。
 5. tests
 
 実装を開始する前に、未確定事項を勝手に決めず一覧化してください。
+
+## 16. work追加要件のモデル・削除制約
+
+2026-10-18のWebプロトタイプ追加モデル。本番DB/APIは今回実装しません。
+
+- Vehicle: id / label / number / officeId / active
+- VehicleUseRecord: id / date / time / end / vehicleId / staffId / clientId / officeId / cancelled / archived
+- SharedOfficeNote: id / officeId / authorStaffId / text / createdAt / updatedAt
+- AlcoholCheckRecord: id / date / officeId / vehicleId / driverStaffId / checkerStaffId / startAlcoholDetected / endAlcoholDetected / startTemperature / drivingInstruction / notes
+- StaffWorkPattern: staffId / weekday / working / startTime / endTime
+- StaffWorkException: staffId / date / kind(off, extra, hours) / working / startTime / endTime
+
+氏名や表示名で結合せずclientId / staffId / officeId / vehicleIdを使う。本番では外部キーを設定し、削除時はトランザクション内で参照を再確認する。予定の例外・キャンセル、書類、依頼、メモ、車両履歴、アルコール記録も参照対象。未使用のみ完全削除、停止／無効化は別操作。
+
+個人メモは本人のみ、共有メモは同一事業所でAPI認可する。本プロトタイプは `visit-free-notes:{staffId}` と `visit-office-notes:{officeId}` を分けるだけで、多端末共有・本番認可は実装しない。共有メモ編集で作成者と作成日時を変更しない。
+
+## 17. 予定・車両履歴・集計の境界
+
+予定本体と特定日override双方に移動手段・車両を保持。社用車は所属事業所の有効車両を選択し、停止後も既存割当と履歴を維持する。車両予約や時間重複判定は未確定のため実装しない。
+
+履歴は実乗車情報とは別で、プロトタイプは指定月の予定を展開し、変更／削除前の社用車情報を保存済みレコードとして残す。職員別と車両別のどちらからもIDで参照する。
+
+移動集計は発生回展開→キャンセル除外→職員別・日別区間→月合算。地図と同一の固定デモ区間値を共用し、帰着区間は未算入。平均は暫定的に移動予定日数で割る。実GPS／道路距離、正式集計対象、ガソリン代精算、距離適否基準は未確定。顧客提供の時間目安は参考表示で法的・医学的判定に使わない。
+
+アルコールチェックはIDを参照する手入力記録。運転可否を推測しない。本番の必須・法定保存項目、保存期間、社内規程、法令上の確認と監査方針は未確定として残し、準拠保証をしない。
+
+将来API例: /vehicles /vehicle-uses /travel-summary /alcohol-checks /office-notes /staff/{id}/work-patterns /staff/{id}/work-exceptions/{date}。APIで所属・役割を検証する。
+
+## 18. 勤務設定と2段階ピンチ
+
+個別日例外を曜日パターンより優先。未設定を休日と推測せず、勤務外区間を描画するだけで登録を拒否しない。勤怠連携・勤務外警告は未確定。
+
+Webは予定表DOM内にTouch Eventsを登録。2点間距離が開始時から15%以上変わった際にdetail / overviewへ最大1回切替。2本指以上のtouchmoveのみpreventDefault（passive:false）し、他領域・1本指操作は変更しない。ジェスチャーの世代でピンチ中の長押しと誤タップを抑止。ボタンを代替操作として残す。
+
+本番SwiftUIではMagnifyGesture等で同じ2状態を実装。ページ全体／iOSのアクセシビリティ拡大を無効にしない。Safari実機でピンチとスクロールの競合、長押しを確認する。
