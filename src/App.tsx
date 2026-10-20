@@ -39,6 +39,7 @@ import {
   deletionReasons,
   localEntries,
   saveAlcoholRecord,
+  saveRequest,
   vehicleUse,
   travelSummary,
   type AlcoholCheckRecord,
@@ -46,7 +47,7 @@ import {
   type StaffWorkException,
 } from "./operations";
 import { ThemeArt, themes } from "./Themes";
-import { ClientManagement } from "./Clients";
+import { AssignedClients, ClientManagement } from "./Clients";
 import {
   ClientCalendar,
   Documents,
@@ -108,7 +109,15 @@ type Screen =
         | "add"
         | "cancellations";
     }
-  | { kind: "weekly" | "documents" | "free-notes" | "requests" | "clients" }
+  | {
+      kind:
+        | "weekly"
+        | "documents"
+        | "free-notes"
+        | "requests"
+        | "clients"
+        | "assigned-clients";
+    }
   | { kind: "vehicles" | "travel-totals" | "alcohol" }
   | { kind: "work-settings"; staffId: string }
   | { kind: "vehicle-history"; vehicleId?: string; staffId?: string }
@@ -116,6 +125,7 @@ type Screen =
   | { kind: "client-calendar"; client: Client; date: string }
   | { kind: "detail" | "edit" | "destination"; visit: Occurrence };
 const titles: Record<Screen["kind"], string> = {
+  "assigned-clients": "担当利用者",
   vehicles: "車両管理",
   "vehicle-history": "車両利用履歴",
   "travel-totals": "移動集計",
@@ -354,6 +364,7 @@ export default function App() {
     case "alcohol":
       content = (
         <AlcoholChecks
+          selfId={self.id}
           records={alcohol}
           vehicles={vehicles}
           staff={staff}
@@ -447,9 +458,24 @@ export default function App() {
           </div>
           <Menu
             icon={<Users />}
+            title="担当利用者"
+            sub="自分の担当利用者を確認"
+            onClick={() => push({ kind: "assigned-clients" })}
+          />
+          <Menu
+            icon={<Users />}
             title="職員位置"
             sub="他職員の最終取得位置"
             onClick={() => push({ kind: "team" })}
+          />
+          <AlcoholChecks
+            view="home"
+            selfId={self.id}
+            records={alcohol}
+            vehicles={vehicles}
+            staff={staff}
+            offices={offices}
+            onSave={(r) => setAlcohol((prev) => saveAlcoholRecord(prev, r))}
           />
           <div className="list-heading">
             <h2 className="section-heading">本日の予定</h2>
@@ -473,6 +499,18 @@ export default function App() {
           visits={visits}
           initialDate={screen.date}
           onOpen={open}
+        />
+      );
+      break;
+    case "assigned-clients":
+      content = (
+        <AssignedClients
+          clients={clients}
+          selfId={self.id}
+          offices={offices}
+          onCalendar={(client) =>
+            push({ kind: "client-calendar", client, date: today })
+          }
         />
       );
       break;
@@ -526,17 +564,12 @@ export default function App() {
           staff={staff}
           onSaveClient={saveClient}
           requests={requests}
-          onAdd={(r) => {
-            setRequests((prev) => [
-              {
-                ...r,
-                requesterStaffId: self.id,
-                requesterOfficeId: self.officeId,
-              },
-              ...prev,
-            ]);
-            flash("新規依頼を登録しました");
+          onSave={(r) => {
+            setRequests((prev) => saveRequest(prev, r, self.id, self.officeId));
           }}
+          onDelete={(id) =>
+            setRequests((prev) => prev.filter((r) => r.id !== id))
+          }
         />
       );
       break;
@@ -744,16 +777,21 @@ export default function App() {
     case "staff-add":
       content = (
         <StaffForm
+          workPatterns={workPatterns}
           existing={editingStaff}
           staff={staff}
           offices={offices}
           onCancel={back}
-          onSave={(s) => {
+          onSave={(s, patterns) => {
             setStaff((prev) =>
               prev.some((p) => p.id === s.id)
                 ? prev.map((p) => (p.id === s.id ? s : p))
                 : [...prev, s],
             );
+            setWorkPatterns((prev) => [
+              ...prev.filter((p) => p.staffId !== s.id),
+              ...patterns,
+            ]);
             back();
             flash("職員を登録しました");
           }}

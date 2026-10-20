@@ -16,7 +16,12 @@ import {
   vehicleSeed,
   workPatternSeed,
 } from "../src/operationData";
-import { WeeklySchedule } from "../src/Additional";
+import { Requests, WeeklySchedule } from "../src/Additional";
+import { AssignedClients } from "../src/Clients";
+import { StaffForm } from "../src/Admin";
+import { clientSeed } from "../src/data";
+import { saveRequest } from "../src/operations";
+import { useState } from "react";
 import { AlcoholChecks, SharedNotes } from "../src/OperationsUI";
 
 // Seed dates must stay reproducible when CI runs in a later week or timezone.
@@ -72,8 +77,364 @@ const registerClient = (name: string, phone = "000-0000-0000") => {
   field("住所", "東京都新宿区・架空");
   fireEvent.click(within(dialog).getByRole("button", { name: "利用者を保存" }));
 };
+describe("October 19 client feedback", () => {
+  it.each(["詳細表示", "全体表示"])(
+    "weekly modes keep client/staff AND search and tapping in %s",
+    (mode) => {
+      const onOpen = vi.fn();
+      render(
+        <WeeklySchedule
+          clients={clientSeed}
+          visits={visitSeed}
+          staff={staffSeed}
+          onOpen={onOpen}
+        />,
+      );
+      click("全体表示");
+      expect(document.querySelector(".week-scroll.overview")).toBeTruthy();
+      click("詳細表示");
+      expect(document.querySelector(".week-scroll.overview")).toBeNull();
+      click(mode);
+      change("週間予定の利用者検索", "client-1-1");
+      const cards = screen.getAllByRole("button", { name: /^10:00.*A様/ });
+      expect(cards.length).toBeGreaterThan(0);
+      fireEvent.click(cards[0]);
+      expect(onOpen.mock.calls[0][0].clientId).toBe("client-1-1");
+      expect(screen.queryByRole("button", { name: /B様/ })).toBeNull();
+      change("週間予定の職員検索", "職員B");
+      expect(screen.queryByRole("button", { name: /A様/ })).toBeNull();
+      click("検索条件クリア");
+      expect(
+        screen.getAllByRole("button", { name: /B様/ }).length,
+      ).toBeGreaterThan(0);
+      expect(
+        screen
+          .getByRole("button", { name: mode, exact: true })
+          .getAttribute("aria-pressed"),
+      ).toBe("true");
+    },
+  );
+  it("creates, edits and confirms deletion of a request while retaining ID and requester metadata", () => {
+    function Harness() {
+      const [records, setRecords] = useState<
+        import("../src/operations").NewRequest[]
+      >([]);
+      return (
+        <>
+          <Requests
+            clients={clientSeed}
+            offices={officeSeed}
+            staff={staffSeed}
+            onSaveClient={vi.fn()}
+            requests={records}
+            onSave={(r) =>
+              setRecords((prev) => saveRequest(prev, r, "staff-1", "office-1"))
+            }
+            onDelete={(id) =>
+              setRecords((prev) => prev.filter((r) => r.id !== id))
+            }
+          />
+          <output data-testid="requests">{JSON.stringify(records)}</output>
+        </>
+      );
+    }
+    render(<Harness />);
+    click("新規依頼をする");
+    change("利用者を検索", "client-1-1");
+    fireEvent.click(screen.getByRole("button", { name: /A様.*client-1-1/ }));
+    change("依頼元", "依頼元の架空事業所");
+    change("簡単な利用者情報", "登録時の情報");
+    change("フリー記載欄", "登録時の内容");
+    click("依頼を登録");
+    const before = JSON.parse(screen.getByTestId("requests").textContent!)[0];
+    click("A様の依頼を編集");
+    expect((screen.getByLabelText("依頼元") as HTMLInputElement).value).toBe(
+      "依頼元の架空事業所",
+    );
+    change("利用者を検索", "client-1-2");
+    fireEvent.click(screen.getByRole("button", { name: /B様.*client-1-2/ }));
+    change("依頼元", "更新後の依頼元");
+    change("簡単な利用者情報", "更新後の情報");
+    change("フリー記載欄", "更新後の内容");
+    click("変更を保存");
+    const updated = JSON.parse(screen.getByTestId("requests").textContent!);
+    expect(updated).toHaveLength(1);
+    expect(updated[0]).toEqual({
+      ...before,
+      clientId: "client-1-2",
+      source: "更新後の依頼元",
+      info: "更新後の情報",
+      body: "更新後の内容",
+    });
+    click("B様の依頼を削除");
+    expect(
+      screen.getByRole("heading", { name: "この新規依頼を削除しますか？" }),
+    ).toBeTruthy();
+    expect(screen.getByText("削除すると元に戻せません。")).toBeTruthy();
+    click("戻る");
+    expect(
+      JSON.parse(screen.getByTestId("requests").textContent!),
+    ).toHaveLength(1);
+    click("B様の依頼を削除");
+    click("削除する");
+    expect(
+      JSON.parse(screen.getByTestId("requests").textContent!),
+    ).toHaveLength(0);
+    expect(screen.getByText("登録された依頼はありません。")).toBeTruthy();
+  });
+  it("home alcohol summary includes every own record for today, not other staff or dates", () => {
+    const own = alcoholSeed[0];
+    render(
+      <AlcoholChecks
+        view="home"
+        selfId="staff-1"
+        offices={officeSeed}
+        staff={staffSeed}
+        vehicles={vehicleSeed}
+        onSave={vi.fn()}
+        records={[
+          own,
+          { ...own, id: "second", startTemperature: 36.9 },
+          { ...own, id: "other-day", date: "2026-09-30" },
+          { ...own, id: "other-driver", driverStaffId: "staff-2" },
+        ]}
+      />,
+    );
+    const home = within(
+      screen.getByRole("region", { name: "本日のアルコールチェック" }),
+    );
+    expect(home.getByText(/チェック済み · 2件/)).toBeTruthy();
+    expect(home.getAllByRole("button", { name: /詳細を見る/ })).toHaveLength(2);
+    expect(home.queryByRole("button", { name: /運転手：職員B/ })).toBeNull();
+    expect(home.queryByLabelText("対象月")).toBeNull();
+  });
+  it("home reuses registration/editing with self driver and updates today's saved check", () => {
+    login();
+    const home = () =>
+      within(screen.getByRole("region", { name: "本日のアルコールチェック" }));
+    expect(home().getByText(/チェック済み · 1件/)).toBeTruthy();
+    fireEvent.click(home().getByRole("button", { name: /詳細を見る/ }));
+    click("編集");
+    fireEvent.change(
+      within(screen.getByRole("dialog")).getByLabelText("日付"),
+      { target: { value: "2026-09-30" } },
+    );
+    click("変更を保存");
+    click("閉じる");
+    expect(home().getByText(/未登録/)).toBeTruthy();
+    fireEvent.click(
+      home().getByRole("button", { name: "チェックを登録", exact: true }),
+    );
+    let modal = within(screen.getByRole("dialog"));
+    expect((modal.getByLabelText("運転手") as HTMLSelectElement).value).toBe(
+      "staff-1",
+    );
+    for (const [label, value] of [
+      ["車両", "vehicle-1-2"],
+      ["確認者", "staff-2"],
+      ["出勤時 酒気帯び", "no"],
+      ["退勤時 酒気帯び", "no"],
+      ["出勤時 体温（℃）", "36.4"],
+      ["指示事項", "allowed"],
+    ]) {
+      fireEvent.change(modal.getByLabelText(label), { target: { value } });
+    }
+    click("チェックを保存");
+    expect(home().getByText(/チェック済み · 1件/)).toBeTruthy();
+    fireEvent.click(home().getByRole("button", { name: /詳細を見る/ }));
+    click("編集");
+    modal = within(screen.getByRole("dialog"));
+    fireEvent.change(modal.getByLabelText("出勤時 体温（℃）"), {
+      target: { value: "36.8" },
+    });
+    click("変更を保存");
+    expect(screen.getByText("36.8℃")).toBeTruthy();
+    click("閉じる");
+    expect(home().getAllByRole("button", { name: /詳細を見る/ })).toHaveLength(
+      1,
+    );
+  });
+  it("management defaults the driver to self and combines daily/monthly filters", () => {
+    render(
+      <AlcoholChecks
+        selfId="staff-2"
+        records={[
+          ...alcoholSeed,
+          { ...alcoholSeed[0], id: "yesterday", date: "2026-09-30" },
+        ]}
+        offices={officeSeed}
+        staff={staffSeed}
+        vehicles={vehicleSeed}
+        onSave={vi.fn()}
+      />,
+    );
+    click("チェックを登録");
+    const modal = within(screen.getByRole("dialog"));
+    expect((modal.getByLabelText("運転手") as HTMLSelectElement).value).toBe(
+      "staff-2",
+    );
+    fireEvent.change(modal.getByLabelText("運転手"), {
+      target: { value: "staff-3" },
+    });
+    expect((modal.getByLabelText("運転手") as HTMLSelectElement).value).toBe(
+      "staff-3",
+    );
+    click("閉じる");
+    click("日別");
+    expect(screen.getByText("1件")).toBeTruthy();
+    change("対象日", "2026-09-30");
+    expect(screen.getByText("1件")).toBeTruthy();
+    change("運転手", "staff-2");
+    expect(screen.getByText("0件")).toBeTruthy();
+    change("運転手", "staff-1");
+    change("車両", "vehicle-1-1");
+    expect(screen.getByText("1件")).toBeTruthy();
+    click("月別");
+    change("対象月", "2026-09");
+    expect(screen.getByText("1件")).toBeTruthy();
+    change("事業所", "office-2");
+    expect(screen.getByText("0件")).toBeTruthy();
+    change("対象月", "2026-10");
+    expect(screen.getByText("1件")).toBeTruthy();
+  });
+  it("assigned clients keep inactive owned clients and link by ID to month and telephone", () => {
+    const own = { ...clientSeed[0], active: false, name: "担当停止様" };
+    const onCalendar = vi.fn();
+    render(
+      <AssignedClients
+        clients={[
+          own,
+          { ...own, id: "other", ownerId: "staff-2", name: "他担当様" },
+        ]}
+        selfId="staff-1"
+        offices={officeSeed}
+        onCalendar={onCalendar}
+      />,
+    );
+    expect(screen.getByRole("heading", { name: "担当停止様" })).toBeTruthy();
+    expect(screen.getByText("利用停止")).toBeTruthy();
+    expect(screen.queryByText("他担当様")).toBeNull();
+    expect(
+      screen.getByRole("link", { name: "電話をかける" }).getAttribute("href"),
+    ).toBe("tel:00000000000");
+    click("月間予定を見る");
+    expect(onCalendar).toHaveBeenCalledExactlyOnceWith(own);
+  });
+  it("home opens assigned clients without visiting document management", () => {
+    login();
+    click("担当利用者 自分の担当利用者を確認");
+    const own = clientSeed.filter((c) => c.ownerId === "staff-1");
+    expect(
+      screen.getAllByRole("button", { name: "月間予定を見る", exact: true }),
+    ).toHaveLength(own.length);
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "月間予定を見る", exact: true })[0],
+    );
+    expect(
+      screen.getByRole("heading", { name: own[0].name, exact: true }),
+    ).toBeTruthy();
+    expect(within(screen.getByRole("main")).getByText("利用者月間スケジュール")).toBeTruthy();
+  });
+  it("staff form saves seven work patterns with the staff's single ID and rejects reversed hours", () => {
+    const onSave = vi.fn();
+    render(
+      <StaffForm
+        offices={officeSeed}
+        staff={staffSeed}
+        onSave={onSave}
+        onCancel={vi.fn()}
+      />,
+    );
+    change("氏名", "追加職員");
+    change("メールアドレス", "new-staff@example.test");
+    change("月の開始時刻", "10:00");
+    change("月の終了時刻", "09:00");
+    click("登録する");
+    expect(onSave).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert").textContent).toContain("終了時刻");
+    change("月の終了時刻", "16:00");
+    change("火の勤務", "off");
+    click("登録する");
+    const [saved, patterns] = onSave.mock.calls[0];
+    expect(saved.id).toBeTruthy();
+    expect(patterns).toHaveLength(7);
+    expect(
+      patterns.every((p: { staffId: string }) => p.staffId === saved.id),
+    ).toBe(true);
+    expect(
+      patterns.find((p: { weekday: number }) => p.weekday === 1).startTime,
+    ).toBe("10:00");
+    expect(
+      patterns.find((p: { weekday: number }) => p.weekday === 2).working,
+    ).toBe(false);
+    expect(screen.queryByLabelText("例外日")).toBeNull();
+  });
+  it("registered work hours reach both timeline modes, holidays, editing and existing work settings", () => {
+    login();
+    click("設定");
+    click("職員管理 70名の登録職員");
+    click("職員を追加");
+    change("氏名", "追加職員");
+    change("メールアドレス", "work-test@example.test");
+    change("木の開始時刻", "10:00");
+    change("木の終了時刻", "16:00");
+    change("金の勤務", "off");
+    click("登録する");
+    click("予定");
+    change("職員検索", "追加職員");
+    const ranges = () =>
+      [...document.querySelectorAll(".nonworking-range")] as HTMLElement[];
+    expect(ranges()).toHaveLength(2);
+    expect(ranges().map((r) => r.style.width)).toEqual(["360px", "360px"]);
+    click("全体表示");
+    expect(ranges()).toHaveLength(2);
+    click("詳細表示");
+    fireEvent.input(screen.getByLabelText("表示日"), {
+      target: { value: "2026-10-02" },
+    });
+    expect(ranges()).toHaveLength(1);
+    expect(ranges()[0].style.width).toBe("1800px");
+    click("設定");
+    click("職員管理 71名の登録職員");
+    fireEvent.change(
+      screen.getByPlaceholderText("氏名・メールアドレスで検索"),
+      { target: { value: "work-test@example.test" } },
+    );
+    click("編集");
+    expect(
+      (screen.getByLabelText("木の開始時刻") as HTMLInputElement).value,
+    ).toBe("10:00");
+    expect((screen.getByLabelText("金の勤務") as HTMLSelectElement).value).toBe(
+      "off",
+    );
+    change("木の終了時刻", "15:00");
+    click("登録する");
+    fireEvent.change(screen.getByPlaceholderText("氏名・メールアドレスで検索"), { target: { value: "work-test@example.test" } });
+    click("勤務設定");
+    expect(
+      (screen.getByLabelText("木の終了時刻") as HTMLInputElement).value,
+    ).toBe("15:00");
+    change("例外日", "2026-10-01");
+    change("例外区分", "off");
+    click("例外を追加・更新");
+    click("勤務設定を保存");
+    click("設定");
+    click("職員管理 71名の登録職員");
+    fireEvent.change(
+      screen.getByPlaceholderText("氏名・メールアドレスで検索"),
+      { target: { value: "work-test@example.test" } },
+    );
+    click("編集");
+    change("木の終了時刻", "14:00");
+    click("登録する");
+    click("予定");
+    change("職員検索", "追加職員");
+    expect(ranges()).toHaveLength(1);
+    expect(ranges()[0].style.width).toBe("1800px");
+  });
+});
 describe("vehicle, work settings and schedule v2", () => {
-  it("deletes unused clients, staff and offices but blocks linked records", () => {
+  it("deletes unused clients and offices but blocks linked records including saved staff work patterns", () => {
     login();
     click("設定");
     click("利用者管理 利用者マスタ・基本情報・月間予定");
@@ -107,8 +468,16 @@ describe("vehicle, work settings and schedule v2", () => {
       { target: { value: "未使用職員" } },
     );
     click("職員を削除");
-    click("削除する");
-    expect(screen.queryByText("未使用職員")).toBeNull();
+    expect(screen.getByRole("alert").textContent).toContain("削除できません");
+    expect(
+      screen.queryByRole("button", { name: "削除する", exact: true }),
+    ).toBeNull();
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "戻る",
+        exact: true,
+      }),
+    );
     click("設定");
     click("事業所管理 7事業所");
     click("事業所を追加");

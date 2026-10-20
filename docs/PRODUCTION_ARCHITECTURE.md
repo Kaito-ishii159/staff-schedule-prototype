@@ -485,3 +485,12 @@ Webプロトタイプは仕様・UX確認のための資料です。
 Webは予定表DOM内にTouch Eventsを登録。2点間距離が開始時から15%以上変わった際にdetail / overviewへ最大1回切替。2本指以上のtouchmoveのみpreventDefault（passive:false）し、他領域・1本指操作は変更しない。ジェスチャーの世代でピンチ中の長押しと誤タップを抑止。ボタンを代替操作として残す。
 
 本番SwiftUIではMagnifyGesture等で同じ2状態を実装。ページ全体／iOSのアクセシビリティ拡大を無効にしない。Safari実機でピンチとスクロールの競合、長押しを確認する。
+
+## 19. 2026-10-19の検証用追加要件
+
+- 週間表示はdetail / overviewの2状態。今回はボタン切替を優先し、既存の日別ピンチを変更しない。
+- 新規依頼の更新はidで置換し、requesterStaffId / requesterOfficeIdを既存レコードから維持。削除は確認後に対象idのみ除去。本番の編集／削除認可と監査はAPI側で設計するが、今回バックエンドは実装しない。
+- ホームと管理画面はAlcoholChecksの表示バリエーションを使い、入力フォーム・検証・詳細・編集を共通利用。新規のdriverStaffIdはself.id、ホーム抽出はdriverStaffIdと本日dateで行う。同日複数を許容し、削除・編集監査の要否は未確定。
+- 担当利用者はClient.ownerIdとself.idで抽出。関連画面へclient.idを渡し、表示名で結合しない。
+- 基本勤務の入力UIと初期値／検証は職員フォームと勤務設定で共通利用。新規Staff.idを1回だけ発行し、StaffWorkPattern.staffIdを同じIDで保存。編集時は当該職員の基本勤務だけ置換し、StaffWorkExceptionを保持。本番ではStaffと基本勤務の保存をトランザクションにする。
+- 移動集計のモデル・計算・画面は今回変更しない。

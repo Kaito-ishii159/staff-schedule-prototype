@@ -2,22 +2,22 @@ import { useState } from "react";
 import { Empty, Modal } from "./components";
 import {
   dateLabel,
-  minutes,
   newId,
   today,
-  weekdayLabels,
   type Client,
   type Office,
   type Staff,
   type Visit,
 } from "./domain";
 import {
+  basicWorkPatterns,
   filterAlcohol,
   readLocal,
   storeLocal,
   travelSummary,
   travelTimeGuide,
   vehicleHistory,
+  validWorkingHours,
   type AlcoholCheckRecord,
   type SharedOfficeNote,
   type StaffWorkException,
@@ -25,6 +25,7 @@ import {
   type Vehicle,
   type VehicleUseRecord,
 } from "./operations";
+import { WorkPatternFields } from "./WorkPatternFields";
 
 export function MasterDeleteDialog({
   label,
@@ -596,14 +597,21 @@ export function AlcoholChecks({
   staff,
   offices,
   onSave,
+  selfId = staff[0]?.id || "",
+  view = "management",
 }: {
   records: AlcoholCheckRecord[];
   vehicles: Vehicle[];
   staff: Staff[];
   offices: Office[];
   onSave: (r: AlcoholCheckRecord) => void;
+  selfId?: string;
+  view?: "management" | "home";
 }) {
+  const home = view === "home";
   const [month, setMonth] = useState(today.slice(0, 7));
+  const [day, setDay] = useState(today);
+  const [period, setPeriod] = useState<"day" | "month">("month");
   const [officeId, setOffice] = useState(offices[0].id);
   const [vehicleId, setVehicle] = useState("");
   const [driver, setDriver] = useState("");
@@ -612,70 +620,121 @@ export function AlcoholChecks({
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const original = records.find((record) => record.id === editor?.id);
-  const filtered = filterAlcohol(records, month, officeId, vehicleId, driver);
+  const filtered = home
+    ? records.filter((r) => r.date === today && r.driverStaffId === selfId)
+    : filterAlcohol(
+        records,
+        period === "day" ? day.slice(0, 7) : month,
+        officeId,
+        vehicleId,
+        driver,
+        period === "day" ? day : "",
+      );
   return (
-    <div className="page">
-      <h1>アルコールチェック</h1>
+    <section
+      className={home ? "home-alcohol" : "page"}
+      aria-label={home ? "本日のアルコールチェック" : undefined}
+    >
+      {home ? (
+        <h2 className="section-heading">本日のアルコールチェック</h2>
+      ) : (
+        <h1>アルコールチェック</h1>
+      )}
+      {home && (
+        <p>
+          {filtered.length ? `チェック済み · ${filtered.length}件` : "未登録"} ·{" "}
+          {today}
+        </p>
+      )}
       <p className="demo-notice">
         手入力による確認デモ · 検知器とは連携しません
       </p>
-      <div className="ops-filters">
-        <label>
-          対象月
-          <input
-            type="month"
-            required
-            value={month}
-            onChange={(e) => setMonth(e.target.value)}
-          />
-        </label>
-        <label>
-          事業所
-          <select
-            value={officeId}
-            onChange={(e) => {
-              setOffice(e.target.value);
-              setVehicle("");
-              setDriver("");
-            }}
+      {!home && (
+        <>
+          <div
+            className="schedule-modes"
+            role="group"
+            aria-label="アルコールチェックの表示期間"
           >
-            {offices.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          車両
-          <select
-            value={vehicleId}
-            onChange={(e) => setVehicle(e.target.value)}
-          >
-            <option value="">すべての車両</option>
-            {vehicles
-              .filter((v) => v.officeId === officeId)
-              .map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.label}
-                </option>
-              ))}
-          </select>
-        </label>
-        <label>
-          運転手
-          <select value={driver} onChange={(e) => setDriver(e.target.value)}>
-            <option value="">すべての運転手</option>
-            {staff
-              .filter((s) => s.officeId === officeId)
-              .map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-          </select>
-        </label>
-      </div>
+            <button
+              aria-pressed={period === "day"}
+              onClick={() => setPeriod("day")}
+            >
+              日別
+            </button>
+            <button
+              aria-pressed={period === "month"}
+              onClick={() => setPeriod("month")}
+            >
+              月別
+            </button>
+          </div>
+          <div className="ops-filters">
+            <label>
+              {period === "day" ? "対象日" : "対象月"}
+              <input
+                type={period === "day" ? "date" : "month"}
+                required
+                value={period === "day" ? day : month}
+                onChange={(e) =>
+                  period === "day"
+                    ? setDay(e.target.value)
+                    : setMonth(e.target.value)
+                }
+              />
+            </label>
+            <label>
+              事業所
+              <select
+                value={officeId}
+                onChange={(e) => {
+                  setOffice(e.target.value);
+                  setVehicle("");
+                  setDriver("");
+                }}
+              >
+                {offices.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              車両
+              <select
+                value={vehicleId}
+                onChange={(e) => setVehicle(e.target.value)}
+              >
+                <option value="">すべての車両</option>
+                {vehicles
+                  .filter((v) => v.officeId === officeId)
+                  .map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.label}
+                    </option>
+                  ))}
+              </select>
+            </label>
+            <label>
+              運転手
+              <select
+                value={driver}
+                onChange={(e) => setDriver(e.target.value)}
+              >
+                <option value="">すべての運転手</option>
+                {staff
+                  .filter((s) => s.officeId === officeId)
+                  .map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+              </select>
+            </label>
+          </div>
+        </>
+      )}
       <button
         className="primary full"
         onClick={() => {
@@ -684,9 +743,9 @@ export function AlcoholChecks({
           setEditor({
             id: newId(),
             date: today,
-            officeId,
+            officeId: staff.find((s) => s.id === selfId)?.officeId || officeId,
             vehicleId: "",
-            driverStaffId: "",
+            driverStaffId: selfId,
             checkerStaffId: "",
             startAlcoholDetected: undefined,
             endAlcoholDetected: undefined,
@@ -696,10 +755,10 @@ export function AlcoholChecks({
           });
         }}
       >
-        チェックを登録
+        {home && filtered.length ? "チェックを追加登録" : "チェックを登録"}
       </button>
       {message && !selected && <p role="status">{message}</p>}
-      <p>{filtered.length}件</p>
+      {!home && <p>{filtered.length}件</p>}
       {filtered.map((r) => (
         <button
           className="client-list-item alcohol-item"
@@ -709,12 +768,16 @@ export function AlcoholChecks({
             setSelected(r);
           }}
         >
+          <b className="alcohol-driver">
+            運転手：
+            {staff.find((s) => s.id === r.driverStaffId)?.name ||
+              "職員情報なし"}
+          </b>
           <b>
             {dateLabel(r.date)} ·{" "}
             {vehicles.find((v) => v.id === r.vehicleId)?.label}
           </b>
           <span>
-            運転手：{staff.find((s) => s.id === r.driverStaffId)?.name} ／
             確認者：{staff.find((s) => s.id === r.checkerStaffId)?.name}
           </span>
           <span>
@@ -728,10 +791,12 @@ export function AlcoholChecks({
           <small>詳細を見る →</small>
         </button>
       ))}
-      {!filtered.length && <Empty>対象のチェックはありません。</Empty>}
-      <p className="field-note">
-        本プロトタイプは法令準拠を保証しません。必須保存項目・保存期間・社内規程・法令上の確認は未確定です。
-      </p>
+      {!home && !filtered.length && <Empty>対象のチェックはありません。</Empty>}
+      {!home && (
+        <p className="field-note">
+          本プロトタイプは法令準拠を保証しません。必須保存項目・保存期間・社内規程・法令上の確認は未確定です。
+        </p>
+      )}
       {editor && (
         <Modal
           title={
@@ -792,6 +857,7 @@ export function AlcoholChecks({
               };
               onSave(saved);
               setMonth(editor.date.slice(0, 7));
+              setDay(editor.date);
               setOffice(editor.officeId);
               setVehicle("");
               setDriver("");
@@ -802,6 +868,33 @@ export function AlcoholChecks({
               if (original) setSelected(saved);
             }}
           >
+            {original ? (
+              <p className="field-note">
+                記録の事業所：
+                {offices.find((o) => o.id === editor.officeId)?.name}
+              </p>
+            ) : (
+              <label>
+                記録の事業所
+                <select
+                  value={editor.officeId}
+                  onChange={(e) =>
+                    setEditor({
+                      ...editor,
+                      officeId: e.target.value,
+                      vehicleId: "",
+                      driverStaffId: "",
+                    })
+                  }
+                >
+                  {offices.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             <label>
               日付
               <input
@@ -1009,7 +1102,7 @@ export function AlcoholChecks({
           </button>
         </Modal>
       )}
-    </div>
+    </section>
   );
 }
 
@@ -1029,19 +1122,8 @@ export function WorkSettings({
   ) => void;
   onHistory: () => void;
 }) {
-  const [draft, setDraft] = useState<StaffWorkPattern[]>(() =>
-    [1, 2, 3, 4, 5, 6, 0].map(
-      (weekday) =>
-        patterns.find(
-          (p) => p.staffId === member.id && p.weekday === weekday,
-        ) || {
-          staffId: member.id,
-          weekday,
-          working: weekday >= 1 && weekday <= 5,
-          startTime: "09:00",
-          endTime: "17:00",
-        },
-    ),
+  const [draft, setDraft] = useState(() =>
+    basicWorkPatterns(member.id, patterns),
   );
   const [days, setDays] = useState(
     exceptions.filter((e) => e.staffId === member.id),
@@ -1056,9 +1138,7 @@ export function WorkSettings({
   });
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const valid = (p: { working: boolean; startTime: string; endTime: string }) =>
-    !p.working ||
-    (!!p.startTime && !!p.endTime && minutes(p.startTime) < minutes(p.endTime));
+  const valid = validWorkingHours;
   return (
     <div className="page">
       <h1>{member.name}の勤務設定</h1>
@@ -1081,63 +1161,7 @@ export function WorkSettings({
         }}
       >
         <h2 className="section-heading">曜日ごとの勤務</h2>
-        {draft.map((p, i) => (
-          <div className="work-day" key={p.weekday}>
-            <label>
-              {weekdayLabels[p.weekday]}
-              <select
-                aria-label={`${weekdayLabels[p.weekday]}の勤務`}
-                value={p.working ? "on" : "off"}
-                onChange={(e) =>
-                  setDraft(
-                    draft.map((r, n) =>
-                      n === i ? { ...r, working: e.target.value === "on" } : r,
-                    ),
-                  )
-                }
-              >
-                <option value="on">勤務</option>
-                <option value="off">休み</option>
-              </select>
-            </label>
-            {p.working && (
-              <div className="time-pair">
-                <label>
-                  開始
-                  <input
-                    type="time"
-                    required
-                    aria-label={`${weekdayLabels[p.weekday]}の開始時刻`}
-                    value={p.startTime}
-                    onChange={(e) =>
-                      setDraft(
-                        draft.map((r, n) =>
-                          n === i ? { ...r, startTime: e.target.value } : r,
-                        ),
-                      )
-                    }
-                  />
-                </label>
-                <label>
-                  終了
-                  <input
-                    type="time"
-                    required
-                    aria-label={`${weekdayLabels[p.weekday]}の終了時刻`}
-                    value={p.endTime}
-                    onChange={(e) =>
-                      setDraft(
-                        draft.map((r, n) =>
-                          n === i ? { ...r, endTime: e.target.value } : r,
-                        ),
-                      )
-                    }
-                  />
-                </label>
-              </div>
-            )}
-          </div>
-        ))}
+        <WorkPatternFields patterns={draft} onChange={setDraft} />
         <h2 className="section-heading">個別日の例外</h2>
         <div className="formcard">
           <label>

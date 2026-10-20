@@ -8,6 +8,68 @@ import {
   type Office,
   type Staff,
 } from "./domain";
+import { assignedClients } from "./operations";
+
+export function AssignedClients({
+  clients,
+  selfId,
+  offices,
+  onCalendar,
+}: {
+  clients: Client[];
+  selfId: string;
+  offices: Office[];
+  onCalendar: (client: Client) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const matches = assignedClients(clients, selfId).filter((c) =>
+    `${c.name} ${c.kana} ${c.id}`
+      .toLocaleLowerCase()
+      .includes(query.trim().toLocaleLowerCase()),
+  );
+  return (
+    <div className="page">
+      <h1>担当利用者</h1>
+      <p className="field-note">
+        ログイン中の自分が担当する利用者です。利用停止の方も確認できます。
+      </p>
+      <label className="search">
+        <input
+          aria-label="担当利用者検索"
+          placeholder="氏名・フリガナ・IDで検索"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+      </label>
+      <p>{matches.length}名</p>
+      {matches.map((c) => (
+        <article className="document-card" key={c.id}>
+          <h2>{c.name}</h2>
+          <p>{c.kana}</p>
+          <p>{offices.find((o) => o.id === c.officeId)?.name}</p>
+          <p>{c.active ? "利用中" : "利用停止"}</p>
+          <p>電話番号：{c.phone || "未登録"}</p>
+          <div className="client-actions">
+            <button className="primary" onClick={() => onCalendar(c)}>
+              月間予定を見る
+            </button>
+            {telephoneHref(c.phone) && (
+              <a className="secondary" href={telephoneHref(c.phone)}>
+                電話をかける
+              </a>
+            )}
+          </div>
+          <details>
+            <summary>利用者情報を確認</summary>
+            <p>利用者ID：{c.id}</p>
+            <p>住所：{c.address || "未登録"}</p>
+          </details>
+        </article>
+      ))}
+      {!matches.length && <Empty>該当する担当利用者はいません。</Empty>}
+    </div>
+  );
+}
 
 export function ClientEditor({
   existing,

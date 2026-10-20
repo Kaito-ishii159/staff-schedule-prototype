@@ -2,6 +2,12 @@ import { useState } from "react";
 import { Building2, Plus, Search } from "lucide-react";
 import { Avatar, Empty, Footer, Modal } from "./components";
 import { newId, type Office, type Staff } from "./domain";
+import {
+  basicWorkPatterns,
+  validWorkingHours,
+  type StaffWorkPattern,
+} from "./operations";
+import { WorkPatternFields } from "./WorkPatternFields";
 export function StaffList({
   staff,
   offices,
@@ -113,21 +119,28 @@ export function StaffForm({
   staff,
   onSave,
   onCancel,
+  workPatterns = [],
 }: {
   existing?: Staff;
   offices: Office[];
   staff: Staff[];
-  onSave: (s: Staff) => void;
+  onSave: (s: Staff, patterns: StaffWorkPattern[]) => void;
   onCancel: () => void;
+  workPatterns?: StaffWorkPattern[];
 }) {
   const [draft, setDraft] = useState(
-    existing || {
-      name: "",
-      email: "",
-      officeId: offices[0]?.id || "",
-      role: "一般職員" as Staff["role"],
-      active: true,
-    },
+    () =>
+      existing || {
+        id: newId(),
+        name: "",
+        email: "",
+        officeId: offices[0]?.id || "",
+        role: "一般職員" as Staff["role"],
+        active: true,
+      },
+  );
+  const [patterns, setPatterns] = useState(() =>
+    basicWorkPatterns(draft.id, workPatterns),
   );
   const [error, setError] = useState("");
   return (
@@ -149,13 +162,20 @@ export function StaffForm({
           setError("このメールアドレスは登録済みです。");
           return;
         }
-        onSave({
-          ...draft,
-          name: draft.name.trim(),
-          email: draft.email.trim(),
-          id: existing?.id || newId(),
-          color: existing?.color || "#397d91",
-        });
+        if (patterns.some((p) => !validWorkingHours(p))) {
+          setError("終了時刻は開始時刻より後にしてください。");
+          return;
+        }
+        onSave(
+          {
+            ...draft,
+            name: draft.name.trim(),
+            email: draft.email.trim(),
+            id: draft.id,
+            color: existing?.color || "#397d91",
+          },
+          patterns.map((p) => ({ ...p, staffId: draft.id })),
+        );
       }}
     >
       <div className="formcard">
@@ -218,6 +238,13 @@ export function StaffForm({
           </select>
         </label>
       </div>
+      <section className="basic-work" aria-label="基本勤務時間">
+        <h2 className="section-heading">基本勤務時間</h2>
+        <p className="field-note">
+          曜日ごとの基本勤務を登録します。個別日の休み・臨時出勤・時間変更は、既存の「勤務設定」で管理します。勤務外でも予定登録は可能です。
+        </p>
+        <WorkPatternFields patterns={patterns} onChange={setPatterns} />
+      </section>
       <p className="field-note">
         デモ内の登録です。招待メールは送信されません。再読み込みで登録データはリセットされます。
       </p>
