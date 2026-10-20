@@ -2,7 +2,13 @@ import { useState } from "react";
 import { ChevronLeft, ChevronRight, Plus, Trash2 } from "lucide-react";
 import { Empty, Modal } from "./components";
 import { ClientPicker } from "./Clients";
-import { filterClients, matchingClientIds } from "./operations";
+import {
+  filterClients,
+  matchingClientIds,
+  type NewRequest,
+  type ScheduleMode,
+} from "./operations";
+export type { NewRequest } from "./operations";
 import { SharedNotes } from "./OperationsUI";
 import {
   addDays,
@@ -180,6 +186,8 @@ export function WeeklySchedule({
   onOpen: (v: Occurrence) => void;
 }) {
   const [start, setStart] = useState(weekStart(today));
+  const [mode, setMode] = useState<ScheduleMode>("detail");
+  const overview = mode === "overview";
   const [query, setQuery] = useState("");
   const [clientQuery, setClientQuery] = useState("");
   const days = Array.from({ length: 7 }, (_, i) => addDays(start, i));
@@ -240,7 +248,24 @@ export function WeeklySchedule({
         検索条件クリア
       </button>
       <div
-        className="week-scroll"
+        className="schedule-modes"
+        role="group"
+        aria-label="週間予定の表示モード"
+      >
+        <button aria-pressed={!overview} onClick={() => setMode("detail")}>
+          詳細表示
+        </button>
+        <button aria-pressed={overview} onClick={() => setMode("overview")}>
+          全体表示
+        </button>
+      </div>
+      <p className="field-note">
+        {overview
+          ? "時刻と利用者をコンパクトに表示 · タップで詳細"
+          : "横にスワイプして1週間の予定を確認"}
+      </p>
+      <div
+        className={`week-scroll ${overview ? "overview" : ""}`}
         tabIndex={0}
         role="region"
         aria-label="全職員の週間予定・左右にスクロール可能"
@@ -265,14 +290,16 @@ export function WeeklySchedule({
                       .map((v) => (
                         <button
                           key={occurrenceKey(v)}
+                          aria-label={`${v.time}〜${v.end} ${v.client} ${v.type}${v.status === "cancelled" ? " キャンセル" : ""}${hasPendingMemo(v) ? " 未完了メモあり" : ""}`}
                           className={`week-visit ${typeClass(v.type)} ${v.status === "cancelled" ? "cancelled-card" : ""}`}
                           onClick={() => onOpen(v)}
                         >
                           <b>
-                            {v.time}〜{v.end}
+                            {v.time}
+                            {!overview && `〜${v.end}`}
                           </b>
                           <strong>{v.client}</strong>
-                          <span>{v.type}</span>
+                          {!overview && <span>{v.type}</span>}
                           {v.status === "cancelled" && (
                             <small>キャンセル</small>
                           )}
@@ -548,42 +575,43 @@ function PrivateNotes({ staffId }: { staffId: string }) {
   );
 }
 
-export type NewRequest = {
-  requesterStaffId?: string;
-  requesterOfficeId?: string;
-  id: string;
-  clientId: string;
-  source: string;
-  info: string;
-  body: string;
-};
 export function Requests({
   clients,
   offices,
   staff,
   onSaveClient,
   requests,
-  onAdd,
+  onSave,
+  onDelete,
 }: {
   clients: Client[];
   offices: Office[];
   staff: Staff[];
   onSaveClient: (c: Client) => void;
   requests: NewRequest[];
-  onAdd: (v: NewRequest) => void;
+  onSave: (v: NewRequest) => void;
+  onDelete: (id: string) => void;
 }) {
-  const [adding, setAdding] = useState(false);
-  const [draft, setDraft] = useState({
-    clientId: "",
-    source: "",
-    info: "",
-    body: "",
-  });
+  const [draft, setDraft] = useState<NewRequest>();
+  const [deleting, setDeleting] = useState<NewRequest>();
+  const [message, setMessage] = useState("");
+  const editing = requests.some((r) => r.id === draft?.id);
   return (
     <div className="page">
       <h1>新規依頼管理</h1>
       <p className="field-note">自社内の依頼も、ここから共有できます。</p>
-      <button className="primary full" onClick={() => setAdding(true)}>
+      <button
+        className="primary full"
+        onClick={() =>
+          setDraft({
+            id: newId(),
+            clientId: "",
+            source: "",
+            info: "",
+            body: "",
+          })
+        }
+      >
         <Plus size={20} />
         新規依頼をする
       </button>
@@ -601,19 +629,46 @@ export function Requests({
           <p className="preserve-lines">{r.info || "記載なし"}</p>
           <h3>依頼内容</h3>
           <p className="preserve-lines">{r.body || "記載なし"}</p>
+          <div className="ops-actions request-actions">
+            <button
+              className="secondary"
+              aria-label={`${clients.find((c) => c.id === r.clientId)?.name || "利用者"}の依頼を編集`}
+              onClick={() => {
+                setMessage("");
+                setDraft({ ...r });
+              }}
+            >
+              編集
+            </button>
+            <button
+              className="secondary danger"
+              aria-label={`${clients.find((c) => c.id === r.clientId)?.name || "利用者"}の依頼を削除`}
+              onClick={() => setDeleting(r)}
+            >
+              削除
+            </button>
+          </div>
         </article>
       ))}
       {!requests.length && <Empty>登録された依頼はありません。</Empty>}
-      {adding && (
-        <Modal title="新規依頼をする" onClose={() => setAdding(false)}>
+      {message && <p role="status">{message}</p>}
+      {draft && (
+        <Modal
+          title={editing ? "新規依頼を編集" : "新規依頼をする"}
+          onClose={() => setDraft(undefined)}
+        >
           <form
             className="request-form"
             onSubmit={(e) => {
               e.preventDefault();
-              if (!draft.clientId || !draft.source.trim()) return;
-              onAdd({ ...draft, id: newId() });
-              setDraft({ clientId: "", source: "", info: "", body: "" });
-              setAdding(false);
+              if (
+                !clients.some((c) => c.id === draft.clientId) ||
+                !draft.source.trim()
+              )
+                return;
+              onSave({ ...draft, source: draft.source.trim() });
+              setMessage(editing ? "依頼を変更しました" : "依頼を登録しました");
+              setDraft(undefined);
             }}
           >
             <ClientPicker
@@ -656,8 +711,36 @@ export function Requests({
                 )}
               </label>
             ))}
-            <button className="primary full">依頼を登録</button>
+            <button className="primary full">
+              {editing ? "変更を保存" : "依頼を登録"}
+            </button>
           </form>
+        </Modal>
+      )}
+      {deleting && (
+        <Modal
+          title="この新規依頼を削除しますか？"
+          onClose={() => setDeleting(undefined)}
+        >
+          <p>削除すると元に戻せません。</p>
+          <div className="inline-actions">
+            <button
+              className="secondary"
+              onClick={() => setDeleting(undefined)}
+            >
+              戻る
+            </button>
+            <button
+              className="primary danger-solid"
+              onClick={() => {
+                onDelete(deleting.id);
+                setDeleting(undefined);
+                setMessage("依頼を削除しました");
+              }}
+            >
+              削除する
+            </button>
+          </div>
         </Modal>
       )}
     </div>

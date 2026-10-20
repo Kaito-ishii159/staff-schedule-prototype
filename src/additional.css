@@ -381,6 +381,71 @@
 .week-visit .memo-alert {
   display: inline-grid;
 }
+.week-scroll.overview .week-table {
+  min-width: 632px;
+  table-layout: fixed;
+  font-size: 11px;
+}
+.week-scroll.overview .week-table th,
+.week-scroll.overview .week-table td {
+  min-width: 78px;
+  width: 78px;
+  padding: 4px;
+}
+.week-scroll.overview .week-table th:first-child {
+  min-width: 70px;
+  width: 70px;
+}
+.week-scroll.overview .week-table thead th {
+  padding: 9px 3px;
+}
+.week-scroll.overview .week-visit {
+  min-height: 44px;
+  padding: 4px;
+  margin-bottom: 4px;
+  border-left-width: 2px;
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+.week-scroll.overview .week-visit b,
+.week-scroll.overview .week-visit strong,
+.week-scroll.overview .week-visit small {
+  line-height: 1.35;
+}
+.week-visit .memo-alert {
+  position: static;
+  width: 16px;
+  height: 16px;
+  font-size: 10px;
+}
+.request-actions {
+  justify-content: space-between;
+  gap: 20px;
+}
+.request-actions button {
+  min-width: 100px;
+  min-height: 44px;
+}
+.home-alcohol {
+  margin: 18px 0;
+  padding: 14px;
+  border: 1px solid #dce5eb;
+  border-radius: 16px;
+  background: #fff;
+}
+.home-alcohol .section-heading {
+  margin-top: 0;
+}
+.home-alcohol .alcohol-item {
+  padding: 12px;
+}
+.alcohol-driver {
+  color: var(--accent);
+  font-size: 15px;
+}
+.basic-work {
+  margin: 18px 0;
+}
 .document-card {
   background: #fff;
   border: 1px solid #e0e7eb;

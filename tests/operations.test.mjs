@@ -19,12 +19,106 @@ import {
   nonWorkingRanges,
   pinchMode,
   travelTimeGuide,
+  saveRequest,
+  assignedClients,
+  basicWorkPatterns,
+  validWorkingHours,
 } from "../src/operations.ts";
 
 const staff = [
   { id: "s", officeId: "o" },
   { id: "other", officeId: "o2" },
 ];
+test("request saves add once and edits retain ID and original requester identities", () => {
+  const created = {
+    id: "r",
+    clientId: "c",
+    source: "office",
+    info: "info",
+    body: "before",
+  };
+  const first = saveRequest([], created, "s", "o");
+  assert.equal(first.length, 1);
+  assert.equal(first[0].requesterStaffId, "s");
+  const other = { ...first[0], id: "other" };
+  const result = saveRequest(
+    [first[0], other],
+    {
+      ...created,
+      clientId: "c2",
+      source: "updated",
+      body: "after",
+      requesterStaffId: "wrong",
+      requesterOfficeId: "wrong",
+    },
+    "s2",
+    "o2",
+  );
+  assert.equal(result.length, 2);
+  assert.deepEqual(result[0], {
+    ...first[0],
+    clientId: "c2",
+    source: "updated",
+    body: "after",
+  });
+  assert.equal(result[1], other);
+  assert.equal(first[0].body, "before");
+});
+test("assigned clients use owner ID and include inactive clients without merging names", () => {
+  const own = { id: "a", name: "same", ownerId: "s", active: false };
+  assert.deepEqual(
+    assignedClients([own, { ...own, id: "b", ownerId: "other" }], "s"),
+    [own],
+  );
+  assert.deepEqual(assignedClients([own], "missing"), []);
+});
+test("basic work patterns share defaults, stable staff identity and saved work-hour values", () => {
+  const defaults = basicWorkPatterns("new");
+  assert.equal(defaults.length, 7);
+  assert.ok(defaults.every((p) => p.staffId === "new"));
+  assert.equal(defaults.find((p) => p.weekday === 6).working, false);
+  assert.equal(defaults.find((p) => p.weekday === 1).startTime, "09:00");
+  const edited = basicWorkPatterns("new", [
+    { ...defaults[0], startTime: "10:00", endTime: "16:00" },
+  ]);
+  assert.equal(edited[0].startTime, "10:00");
+  assert.equal(validWorkingHours({ ...edited[0], endTime: "09:00" }), false);
+  assert.equal(
+    validWorkingHours({ working: false, startTime: "", endTime: "" }),
+    true,
+  );
+  assert.deepEqual(
+    nonWorkingRanges("new", "2026-10-05", edited, [], 480, 1080),
+    [
+      { start: 480, end: 600 },
+      { start: 960, end: 1080 },
+    ],
+  );
+  assert.deepEqual(
+    nonWorkingRanges("new", "2026-10-10", edited, [], 480, 1080),
+    [{ start: 480, end: 1080 }],
+  );
+});
+test("daily and monthly alcohol filters combine with office, vehicle and driver", () => {
+  const a = {
+    id: "a",
+    date: "2026-10-01",
+    officeId: "o",
+    vehicleId: "v",
+    driverStaffId: "s",
+  };
+  const b = { ...a, id: "b", date: "2026-10-02" };
+  const c = { ...a, id: "c" };
+  assert.equal(filterAlcohol([a, b, c], "2026-10", "o").length, 3);
+  assert.deepEqual(
+    filterAlcohol([a, b, c], "2026-10", "o", "v", "s", "2026-10-01"),
+    [a, c],
+  );
+  assert.equal(
+    filterAlcohol([a, b], "2026-10", "o", "v", "other", "2026-10-01").length,
+    0,
+  );
+});
 const visit = () => ({
   id: "v",
   clientId: "c",

@@ -69,6 +69,56 @@ export interface SharedOfficeNote {
   createdAt: string;
   updatedAt: string;
 }
+export interface NewRequest {
+  id: string;
+  clientId: string;
+  source: string;
+  info: string;
+  body: string;
+  requesterStaffId?: string;
+  requesterOfficeId?: string;
+}
+export function saveRequest(
+  records: NewRequest[],
+  record: NewRequest,
+  staffId: string,
+  officeId: string,
+) {
+  const original = records.find((item) => item.id === record.id);
+  const saved = {
+    ...record,
+    requesterStaffId: original ? original.requesterStaffId : staffId,
+    requesterOfficeId: original ? original.requesterOfficeId : officeId,
+  };
+  return original
+    ? records.map((item) => (item.id === original.id ? saved : item))
+    : [saved, ...records];
+}
+export const assignedClients = (clients: Client[], staffId: string) =>
+  clients.filter((client) => client.ownerId === staffId);
+export function basicWorkPatterns(
+  staffId: string,
+  patterns: StaffWorkPattern[] = [],
+) {
+  return [1, 2, 3, 4, 5, 6, 0].map((weekday) => ({
+    ...(patterns.find(
+      (p) => p.staffId === staffId && p.weekday === weekday,
+    ) || {
+      weekday,
+      working: weekday >= 1 && weekday <= 5,
+      startTime: "09:00",
+      endTime: "17:00",
+    }),
+    staffId,
+  }));
+}
+export const validWorkingHours = (p: {
+  working: boolean;
+  startTime: string;
+  endTime: string;
+}) =>
+  !p.working ||
+  (!!p.startTime && !!p.endTime && minutes(p.startTime) < minutes(p.endTime));
 export function readLocal<T>(key: string, fallback: T): T {
   try {
     const raw = localStorage.getItem(key);
@@ -220,12 +270,14 @@ export function filterAlcohol(
   officeId: string,
   vehicleId = "",
   staffId = "",
+  date = "",
 ) {
   return records
     .filter(
       (r) =>
         r.date.startsWith(`${month}-`) &&
         r.officeId === officeId &&
+        (!date || r.date === date) &&
         (!vehicleId || r.vehicleId === vehicleId) &&
         (!staffId || r.driverStaffId === staffId),
     )
