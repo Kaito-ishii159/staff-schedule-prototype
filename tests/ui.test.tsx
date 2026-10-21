@@ -77,6 +77,96 @@ const registerClient = (name: string, phone = "000-0000-0000") => {
   field("住所", "東京都新宿区・架空");
   fireEvent.click(within(dialog).getByRole("button", { name: "利用者を保存" }));
 };
+describe("October 21 client feedback", () => {
+  it.each([
+    ["create", "A様"],
+    ["create", "Aサマ"],
+    ["create", "client-1-1"],
+    ["edit", "A様"],
+    ["edit", "Aサマ"],
+    ["edit", "client-1-1"],
+  ])("keeps existing client search in schedule %s by %s", (mode, query) => {
+    login();
+    if (mode === "create") {
+      click("予定登録");
+    } else {
+      click("予定");
+      click("10:00–10:30 A様 定期訪問 繰り返し");
+      click("編集");
+    }
+    const candidates = screen.getByRole("group", { name: "登録済み利用者の候補" });
+    change("利用者を検索", query);
+    const client = within(candidates).getByRole("button", { name: /A様.*client-1-1/ });
+    expect(within(candidates).queryByRole("button", { name: /B様/ })).toBeNull();
+    fireEvent.click(client);
+    expect(screen.getByText("選択中：A様")).toBeTruthy();
+    expect((screen.getByLabelText("訪問先") as HTMLInputElement).value).toBe("A様");
+  });
+
+  it("keeps an existing inactive request client selected without showing other clients", () => {
+    const client = { ...clientSeed[0], active: false };
+    const request = {
+      id: "existing-request", clientId: client.id, source: "架空依頼元",
+      info: "旧情報", body: "旧内容", requesterStaffId: "staff-2", requesterOfficeId: "office-1",
+    };
+    const onSave = vi.fn();
+    render(<Requests clients={[client, clientSeed[1]]} offices={officeSeed} staff={staffSeed}
+      onSaveClient={vi.fn()} requests={[request]} onSave={onSave} onDelete={vi.fn()} />);
+    click("A様の依頼を編集");
+    expect(screen.getByText("選択中：A様（利用停止）")).toBeTruthy();
+    expect(screen.queryByLabelText("利用者を検索")).toBeNull();
+    expect(screen.queryByRole("group", { name: "登録済み利用者の候補" })).toBeNull();
+    change("フリー記載欄", "修正内容");
+    click("変更を保存");
+    expect(onSave).toHaveBeenCalledExactlyOnceWith({ ...request, body: "修正内容" });
+  });
+
+  it("switches assigned staff by ID, retaining inactive clients, scoped search and existing links", () => {
+    const first = { ...staffSeed[0], name: "同名職員" };
+    const second = { ...staffSeed[1], name: "同名職員", officeId: "office-2", active: false };
+    const own = { ...clientSeed[0], id: "own-id", name: "同名利用者", kana: "オナジサマ" };
+    const other = { ...own, id: "other-id", ownerId: second.id, active: false };
+    const onCalendar = vi.fn();
+    render(<AssignedClients clients={[own, other]} selfId={first.id} staff={[first, second, staffSeed[2]]}
+      offices={officeSeed} onCalendar={onCalendar} />);
+    expect((screen.getByLabelText("担当職員") as HTMLSelectElement).value).toBe(first.id);
+    expect(screen.getByRole("option", { name: "同名職員（池袋事業所）（無効）" })).toBeTruthy();
+    expect(screen.queryByText("利用停止", { exact: true })).toBeNull();
+    change("担当職員", second.id);
+    expect(screen.getByText("利用停止", { exact: true })).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: "月間予定を見る" })).toHaveLength(1);
+    for (const query of [other.name, other.kana, other.id]) {
+      change("担当利用者検索", query);
+      expect(screen.getByRole("heading", { name: other.name })).toBeTruthy();
+    }
+    change("担当利用者検索", own.id);
+    expect(screen.getByText("該当する担当利用者はいません。")).toBeTruthy();
+    change("担当利用者検索", other.id);
+    expect(screen.getByRole("link", { name: "電話をかける" }).getAttribute("href")).toBe("tel:00000000000");
+    fireEvent.click(screen.getByText("利用者情報を確認"));
+    expect(screen.getByText(`利用者ID：${other.id}`)).toBeTruthy();
+    click("月間予定を見る");
+    expect(onCalendar).toHaveBeenCalledExactlyOnceWith(other);
+    change("担当職員", first.id);
+    expect(screen.getByText("該当する担当利用者はいません。")).toBeTruthy();
+    change("担当利用者検索", "");
+    expect(screen.getByRole("heading", { name: own.name })).toBeTruthy();
+    change("担当職員", staffSeed[2].id);
+    expect(screen.getByText("該当する担当利用者はいません。")).toBeTruthy();
+  });
+
+  it("opens another staff member's client calendar with the same client ID", () => {
+    login();
+    click("担当利用者 自分・他職員の担当利用者を確認");
+    change("担当職員", "staff-2");
+    change("担当利用者検索", "client-2-1");
+    click("月間予定を見る");
+    expect(screen.getByRole("heading", { name: "C様", exact: true })).toBeTruthy();
+    click("2026-10-01 1件");
+    expect(screen.getByRole("button", { name: /10:00.*C様.*担当者会議/ })).toBeTruthy();
+  });
+});
+
 describe("October 19 client feedback", () => {
   it.each(["詳細表示", "全体表示"])(
     "weekly modes keep client/staff AND search and tapping in %s",
@@ -116,16 +206,17 @@ describe("October 19 client feedback", () => {
   );
   it("creates, edits and confirms deletion of a request while retaining ID and requester metadata", () => {
     function Harness() {
+      const [clients, setClients] = useState(clientSeed);
       const [records, setRecords] = useState<
         import("../src/operations").NewRequest[]
       >([]);
       return (
         <>
           <Requests
-            clients={clientSeed}
+            clients={clients}
             offices={officeSeed}
             staff={staffSeed}
-            onSaveClient={vi.fn()}
+            onSaveClient={(client) => setClients((prev) => [...prev, client])}
             requests={records}
             onSave={(r) =>
               setRecords((prev) => saveRequest(prev, r, "staff-1", "office-1"))
@@ -140,19 +231,27 @@ describe("October 19 client feedback", () => {
     }
     render(<Harness />);
     click("新規依頼をする");
-    change("利用者を検索", "client-1-1");
-    fireEvent.click(screen.getByRole("button", { name: /A様.*client-1-1/ }));
+    expect(screen.queryByLabelText("利用者を検索")).toBeNull();
+    expect(screen.queryByRole("group", { name: "登録済み利用者の候補" })).toBeNull();
+    expect(screen.getByText("新規依頼する利用者を登録してください。")).toBeTruthy();
     change("依頼元", "依頼元の架空事業所");
     change("簡単な利用者情報", "登録時の情報");
     change("フリー記載欄", "登録時の内容");
     click("依頼を登録");
+    expect(JSON.parse(screen.getByTestId("requests").textContent!)).toHaveLength(0);
+    registerClient("依頼用サンプル様");
+    expect(screen.getByText("選択中：依頼用サンプル様")).toBeTruthy();
+    click("依頼を登録");
     const before = JSON.parse(screen.getByTestId("requests").textContent!)[0];
-    click("A様の依頼を編集");
+    expect(before.clientId).toBeTruthy();
+    expect(clientSeed.some((c) => c.id === before.clientId)).toBe(false);
+    click("依頼用サンプル様の依頼を編集");
+    expect(screen.getByText("選択中：依頼用サンプル様")).toBeTruthy();
+    expect(screen.queryByLabelText("利用者を検索")).toBeNull();
+    expect(screen.queryByRole("group", { name: "登録済み利用者の候補" })).toBeNull();
     expect((screen.getByLabelText("依頼元") as HTMLInputElement).value).toBe(
       "依頼元の架空事業所",
     );
-    change("利用者を検索", "client-1-2");
-    fireEvent.click(screen.getByRole("button", { name: /B様.*client-1-2/ }));
     change("依頼元", "更新後の依頼元");
     change("簡単な利用者情報", "更新後の情報");
     change("フリー記載欄", "更新後の内容");
@@ -161,12 +260,11 @@ describe("October 19 client feedback", () => {
     expect(updated).toHaveLength(1);
     expect(updated[0]).toEqual({
       ...before,
-      clientId: "client-1-2",
       source: "更新後の依頼元",
       info: "更新後の情報",
       body: "更新後の内容",
     });
-    click("B様の依頼を削除");
+    click("依頼用サンプル様の依頼を削除");
     expect(
       screen.getByRole("heading", { name: "この新規依頼を削除しますか？" }),
     ).toBeTruthy();
@@ -175,7 +273,7 @@ describe("October 19 client feedback", () => {
     expect(
       JSON.parse(screen.getByTestId("requests").textContent!),
     ).toHaveLength(1);
-    click("B様の依頼を削除");
+    click("依頼用サンプル様の依頼を削除");
     click("削除する");
     expect(
       JSON.parse(screen.getByTestId("requests").textContent!),
@@ -307,6 +405,7 @@ describe("October 19 client feedback", () => {
           { ...own, id: "other", ownerId: "staff-2", name: "他担当様" },
         ]}
         selfId="staff-1"
+        staff={staffSeed}
         offices={officeSeed}
         onCalendar={onCalendar}
       />,
@@ -322,7 +421,7 @@ describe("October 19 client feedback", () => {
   });
   it("home opens assigned clients without visiting document management", () => {
     login();
-    click("担当利用者 自分の担当利用者を確認");
+    click("担当利用者 自分・他職員の担当利用者を確認");
     const own = clientSeed.filter((c) => c.ownerId === "staff-1");
     expect(
       screen.getAllByRole("button", { name: "月間予定を見る", exact: true }),

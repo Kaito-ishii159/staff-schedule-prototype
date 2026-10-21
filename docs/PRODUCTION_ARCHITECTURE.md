@@ -491,6 +491,12 @@ Webは予定表DOM内にTouch Eventsを登録。2点間距離が開始時から1
 - 週間表示はdetail / overviewの2状態。今回はボタン切替を優先し、既存の日別ピンチを変更しない。
 - 新規依頼の更新はidで置換し、requesterStaffId / requesterOfficeIdを既存レコードから維持。削除は確認後に対象idのみ除去。本番の編集／削除認可と監査はAPI側で設計するが、今回バックエンドは実装しない。
 - ホームと管理画面はAlcoholChecksの表示バリエーションを使い、入力フォーム・検証・詳細・編集を共通利用。新規のdriverStaffIdはself.id、ホーム抽出はdriverStaffIdと本日dateで行う。同日複数を許容し、削除・編集監査の要否は未確定。
-- 担当利用者はClient.ownerIdとself.idで抽出。関連画面へclient.idを渡し、表示名で結合しない。
+- 担当利用者はClient.ownerIdと選択中の職員ID（初期値self.id）で抽出。関連画面へclient.idを渡し、表示名で結合しない。
 - 基本勤務の入力UIと初期値／検証は職員フォームと勤務設定で共通利用。新規Staff.idを1回だけ発行し、StaffWorkPattern.staffIdを同じIDで保存。編集時は当該職員の基本勤務だけ置換し、StaffWorkExceptionを保持。本番ではStaffと基本勤務の保存をトランザクションにする。
 - 移動集計のモデル・計算・画面は今回変更しない。
+
+## 20. 2026-10-21の新規依頼・担当職員切替
+
+ClientPickerは標準allと新規依頼専用new-onlyを分離。new-onlyは既存検索・候補を描画せず、共通ClientEditorで登録したClientを親stateへ保存しclientIdを自動選択する。編集時の関連Clientは停止済みでも選択情報として表示する。NewRequestのモデル・更新／削除処理は変更しない。依頼段階でClientマスタへ登録する本番方針は未確定。
+
+担当利用者は職員ID選択後にownerIdで抽出し、その結果を検索。職員名・事業所名は表示のみで識別キーにしない。プロトタイプでは職員マスタ全体を選択できるが、本番の一般職員／管理者・同一事業所／全事業所の閲覧範囲は未確定。確定後API側で認可し、今回UIだけの権限制御は追加しない。
