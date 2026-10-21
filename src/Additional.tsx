@@ -672,6 +672,7 @@ export function Requests({
             }}
           >
             <ClientPicker
+              mode="new-only"
               clients={clients}
               offices={offices}
               staff={staff}
@@ -681,7 +682,7 @@ export function Requests({
             />
             {!draft.clientId && (
               <p className="field-note">
-                登録済み利用者を選択、または新しい利用者を登録してください。
+                新規依頼する利用者を登録してください。
               </p>
             )}
             {(

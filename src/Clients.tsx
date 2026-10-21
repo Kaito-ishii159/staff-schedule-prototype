@@ -13,16 +13,19 @@ import { assignedClients } from "./operations";
 export function AssignedClients({
   clients,
   selfId,
+  staff,
   offices,
   onCalendar,
 }: {
   clients: Client[];
   selfId: string;
+  staff: Staff[];
   offices: Office[];
   onCalendar: (client: Client) => void;
 }) {
+  const [selectedStaffId, setSelectedStaffId] = useState(selfId);
   const [query, setQuery] = useState("");
-  const matches = assignedClients(clients, selfId).filter((c) =>
+  const matches = assignedClients(clients, selectedStaffId).filter((c) =>
     `${c.name} ${c.kana} ${c.id}`
       .toLocaleLowerCase()
       .includes(query.trim().toLocaleLowerCase()),
@@ -31,8 +34,24 @@ export function AssignedClients({
     <div className="page">
       <h1>担当利用者</h1>
       <p className="field-note">
-        ログイン中の自分が担当する利用者です。利用停止の方も確認できます。
+        担当職員を切り替えて、担当利用者を確認できます。初期表示は自分の担当です。利用停止の方も確認できます。
       </p>
+      <label className="ops-filter">
+        担当職員
+        <select
+          value={selectedStaffId}
+          onChange={(e) => setSelectedStaffId(e.target.value)}
+        >
+          {staff.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.name}（
+              {offices.find((o) => o.id === s.officeId)?.name || "事業所情報なし"}
+              ）
+              {!s.active && "（無効）"}
+            </option>
+          ))}
+        </select>
+      </label>
       <label className="search">
         <input
           aria-label="担当利用者検索"
@@ -179,6 +198,7 @@ export function ClientPicker({
   value,
   onSelect,
   onSave,
+  mode = "all",
 }: {
   clients: Client[];
   offices: Office[];
@@ -186,6 +206,7 @@ export function ClientPicker({
   value?: string;
   onSelect: (client: Client) => void;
   onSave: (client: Client) => void;
+  mode?: "all" | "new-only";
 }) {
   const [query, setQuery] = useState("");
   const [adding, setAdding] = useState(false);
@@ -199,15 +220,17 @@ export function ClientPicker({
   );
   return (
     <div className="client-picker">
-      <label>
-        利用者を検索
-        <input
-          type="search"
-          placeholder="氏名・フリガナ・利用者ID"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
-      </label>
+      {mode === "all" && (
+        <label>
+          利用者を検索
+          <input
+            type="search"
+            placeholder="氏名・フリガナ・利用者ID"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </label>
+      )}
       {selected && (
         <div className="client-selected">
           <b>
@@ -221,27 +244,31 @@ export function ClientPicker({
           </small>
         </div>
       )}
-      <div
-        className="client-options"
-        role="group"
-        aria-label="登録済み利用者の候補"
-      >
-        {matches.map((c) => (
-          <button
-            type="button"
-            key={c.id}
-            aria-pressed={value === c.id}
-            onClick={() => onSelect(c)}
-          >
-            <b>{c.name}</b>
-            <small>
-              {c.kana} · {offices.find((o) => o.id === c.officeId)?.name}
-            </small>
-            <small>{c.id}</small>
-          </button>
-        ))}
-      </div>
-      {!matches.length && <p>該当する利用中の利用者はいません。</p>}
+      {mode === "all" && (
+        <div
+          className="client-options"
+          role="group"
+          aria-label="登録済み利用者の候補"
+        >
+          {matches.map((c) => (
+            <button
+              type="button"
+              key={c.id}
+              aria-pressed={value === c.id}
+              onClick={() => onSelect(c)}
+            >
+              <b>{c.name}</b>
+              <small>
+                {c.kana} · {offices.find((o) => o.id === c.officeId)?.name}
+              </small>
+              <small>{c.id}</small>
+            </button>
+          ))}
+        </div>
+      )}
+      {mode === "all" && !matches.length && (
+        <p>該当する利用中の利用者はいません。</p>
+      )}
       <button
         type="button"
         className="text-action"

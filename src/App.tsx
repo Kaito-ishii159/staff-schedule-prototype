@@ -459,7 +459,7 @@ export default function App() {
           <Menu
             icon={<Users />}
             title="担当利用者"
-            sub="自分の担当利用者を確認"
+            sub="自分・他職員の担当利用者を確認"
             onClick={() => push({ kind: "assigned-clients" })}
           />
           <Menu
@@ -507,6 +507,7 @@ export default function App() {
         <AssignedClients
           clients={clients}
           selfId={self.id}
+          staff={staff}
           offices={offices}
           onCalendar={(client) =>
             push({ kind: "client-calendar", client, date: today })
